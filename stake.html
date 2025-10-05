@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/NifftySwiggle/Gaia-Ecosystem/main/assets/gaia-logo.png" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Non-Custodial NFT Staking Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../styles/stake-styles.css">
+</head>
+<body>
+    <body>
+    <header>
+        <div class="logo">
+            <a href="./index.html" onclick="return confirm ('Leave this page? Unsaved changes may be lost.')">
+            <img src="https://raw.githubusercontent.com/NifftySwiggle/Gaia-Ecosystem/main/assets/gaia-logo.png" alt="Logo">
+        </div>
+        <nav>
+            <a href="./index.html" onclick="return confirm ('Leave this page? Unsaved changes may be lost.')">Home</a>
+            <a href="#availablePoolsSection">Pools</a>
+            <a href="#stakeSection">Stake</a>
+            <a href="#unstakeSection">Unstake</a>
+            <a href="#deploySection">Deploy</a>
+            <!-- Add more links as needed, e.g., <a href="index.html">Home</a> -->
+        </nav>
+    </header>
+    <div class="stars" id="stars"></div>
+    <div class="planet">
+    <img src="https://raw.githubusercontent.com/NifftySwiggle/Gaia-Ecosystem/main/assets/gaia-logo.png" alt="logo">
+    </div>
+    <div class="container">
+        <h1>Gaia Ecosystem</h1>
+        <h1>Non-Custodial NFT Staking Platform</h1>
+        <div class="section">
+            <div>
+                <select id="networkSelect" style="margin-right: 10px;">
+                    <option value="cronos">Cronos</option>
+                    <option value="polygon">Polygon</option>
+                </select>
+                <button id="connectWallet" class="button">Connect Wallet</button>
+                <button id="howToUse" class="button">How to Use</button>
+            </div>
+            <span id="walletStatus"></span>
+            <!--<div id="walletAddress" class="wallet-address"></div>-->
+        </div>
+       
+        <div class="section" id="availablePoolsSection">
+            <div class="section-header">
+                <h2>Available Pools</h2>
+                <button id="toggleAvailablePools" class="button toggle-button">Collapse Available Pools Content</button>
+            </div>
+            <div id="poolsContent">
+                <button id="loadPools" class="button">Load Pools</button>
+                <div id="pools" class="pool-container"></div>
+            </div>
+        </div>
+        <div class="section" id="stakeSection" style="display: none;">
+            <div class="section-header">
+                <h2>Stake NFTs</h2>
+                <button id="toggleStakeSection" class="button toggle-button">Collapse Stake Content</button>
+            </div>
+            <div id="stakeContent">
+                <select id="selectedPool">
+                    <option value="">Select a Pool</option>
+                </select>
+                <div id="loading">Loading NFTs...</div>
+                <div id="nftStatus" class="status"></div>
+                <div id="nfts" class="nft-grid"></div>
+                <button id="approveNFTs" class="button">Approve NFTs</button>
+                <button id="selectAllStake" class="button">Select All for Stake</button>
+                <button id="stakeNFTs" class="button" disabled>Stake NFTs</button>
+                <div id="bonusNfts" class="nft-grid" style="display: none;"></div>
+                <button id="approveBonusNFTs" class="button" style="display: none;">Approve Bonus NFTs</button>
+                <button id="selectAllBonusStake" class="button" style="display: none;">Select All for Bonus Stake</button>
+                <button id="stakeBonusNFTs" class="button" disabled style="display: none;">Stake Bonus NFTs</button>
+                <div id="currentMultiplier"></div>
+                <div id="stakeStatus" class="status"></div>
+            </div>
+        </div>
+        <div class="section" id="unstakeSection" style="display: none;">
+            <div class="section-header">
+                <h2>Unstake NFTs</h2>
+                <button id="toggleUnstakeSection" class="button toggle-button">Collapse Unstake Content</button>
+            </div>
+            <div id="unstakeContent">
+                <div id="pendingRewards"></div>
+                <div id="stakedNFTs" class="nft-grid"></div>
+                <button id="selectAllUnstake" class="button">Select All for Unstake</button>
+                <button id="unstakeNFTs" class="button" disabled>Unstake Selected NFTs</button>
+                <button id="claimRewards" class="button" disabled>Claim Rewards</button>
+                <div id="stakedBonusNFTs" class="nft-grid" style="display: none;"></div>
+                <button id="selectAllBonusUnstake" class="button" style="display: none;">Select All for Bonus Unstake</button>
+                <button id="unstakeBonusNFTs" class="button" disabled style="display: none;">Unstake Bonus NFTs</button>
+                <div id="unstakeStatus" class="status"></div>
+            </div>
+        </div>
+        <div class="section" id="deploySection" style="display: none;">
+            <div class="section-header">
+                <h2>Deploy New Staking Pool</h2>
+                <button id="toggleDeploySection" class="button toggle-button">Collapse Deploy Content</button>
+            </div>
+            <div id="deployContent">
+                <p id="openFeeDisplay">Pool Open Fee: 0.10 USDC</p>
+                <input id="nftAddress" type="text" placeholder="NFT Contract Address">
+                <input id="rewardToken" type="text" placeholder="Reward Token Address">
+                <input id="startTime" type="datetime-local" placeholder="Start Time">
+                <input id="endTime" type="datetime-local" placeholder="End Time">
+                <input id="totalRewards" type="number" placeholder="Total Rewards">
+                <input id="poolName" type="text" placeholder="Pool Name">
+                <label for="poolImage">Upload Image (Optional)</label>
+                <input id="poolImage" type="file" accept="image/*"> 
+                <button id="deployPool" class="button">Deploy Pool</button>
+                <div id="deployStatus" class="status"></div>
+            </div>
+        </div>
+        <div class="section" id="myPoolsSection">
+            <div class="section-header">
+                <h2>My Pools</h2>
+                <button id="toggleMyPools" class="button toggle-button">Collapse My Pools Content</button>
+            </div>
+            <div id="myPoolsContent">
+                <button id="loadMyPools" class="button">Load My Pools</button>
+                <div id="myPools"></div>
+            </div>
+        </div>
+        <div class="section" id="manageSection" style="display: none;">
+            <div class="section-header">
+                <h2>Manage Pool</h2>
+                <button id="toggleManageSection" class="button toggle-button">Collapse Manage Content</button>
+            </div>
+            <div id="manageContent">
+                <select id="managePool">
+                    <option value="">Select a Pool</option>
+                </select>
+                <input id="newEndTime" type="datetime-local" placeholder="New End Time">
+                <button id="setEndTime" class="button">Set End Time</button>
+                <input id="newRewardTokenName" type="text" placeholder="Reward Token Name">
+                <button id="setRewardTokenName" class="button">Set Reward Token Name</button>
+                <input id="bonusNFTAddress" type="text" placeholder="Bonus NFT Address">
+                <button id="setBonusNFT" class="button">Set Bonus NFT</button>
+                <input id="newPoolImage" type="file" accept="image/*">
+                <button id="setPoolImage" class="button">Set Pool Image (optional)</button>
+                <input id="addRewardAmount" type="number" placeholder="Reward Amount">
+                <button id="addRewards" class="button">Add Rewards</button>
+                <!--<input id="withdrawAmount" type="number" placeholder="Withdraw Amount">
+                <button id="withdrawExcess" class="button">Withdraw Excess Rewards</button>-->
+                <button id="endPool" class="button">End Pool Now</button>
+                <button id="withdrawRemaining" class="button">Withdraw Remaining</button>
+                <!--<input id="newNFTAddress" type="text" placeholder="New NFT Contract Address">
+                <button id="setNFT" class="button">Set New NFT</button>
+                <input id="newRewardTokenAddress" type="text" placeholder="New Reward Token Address">
+                <button id="setRewardToken" class="button">Set New Reward Token</button>-->
+                <div id="manageStatus" class="status"></div>
+            </div>
+        </div>
+        <div class="section" id="adminSection" style="display: none;">
+            <div class="section-header">
+                <h2>Admin Dashboard</h2>
+                <button id="toggleAdminSection" class="button toggle-button">Collapse Admin Content</button>
+            </div>
+            <div id="adminContent">
+                <p>Current Open Fee: <span id="currentOpenFee"></span> USDC</p>
+                <p>Current Tx Fee: <span id="currentTxFee"></span> Native Token</p>
+                <input id="newOpenFee" type="number" placeholder="New Open Fee (USDC)">
+                <button id="setOpenFee" class="button">Set Open Fee</button>
+                <input id="newTxFee" type="number" placeholder="New Tx Fee (Native)">
+                <button id="setTxFee" class="button">Set Tx Fee</button>
+                <input id="exemptAddress" type="text" placeholder="Exempt Address">
+                <select id="exemptStatus">
+                    <option value="true">Exempt</option>
+                    <option value="false">Not Exempt</option>
+                </select>
+                <button id="setExempt" class="button">Set Exempt</button>
+                <p>Native Balance: <span id="nativeBalance"></span></p>
+                <p>USDC Balance: <span id="usdcBalance"></span></p>
+                <input id="withdrawNativeAmount" type="number" placeholder="Withdraw Native Amount">
+                <button id="withdrawNative" class="button">Withdraw Native</button>
+                <input id="withdrawUsdcAmount" type="number" placeholder="Withdraw USDC Amount">
+                <button id="withdrawUsdc" class="button">Withdraw USDC</button>
+                <div id="adminStatus" class="status"></div>
+            </div>
+        </div>
+        <div class="section" id="endedPoolsSection" style="display: none;">
+            <div class="section-header">
+                <h2>Ended Pools</h2>
+                <button id="toggleEndedPools" class="button toggle-button">Collapse Ended Pools Content</button>
+            </div>
+            <div id="endedPoolsContent">
+                <div id="endedPools" class="pool-container"></div>
+            </div>
+        </div>
+    </div>
+    <footer>
+        <p>Created by <strong>NifftySwiggle © 2025</strong> 🚀</p>
+        <!--<button class="button" onclick="document.getElementById('donationModal').style.display='flex'">Donate</button>-->
+    </footer>
+    <div id="donationModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="document.getElementById('donationModal').style.display='none'">✖</span>
+            <h2>Support the Builder 💜</h2>
+            <p>If this dApp helped you or inspired your own build, consider donating to keep the magic flowing.</p>
+            <p><strong>NifftySwiggle Wallet Address:</strong></p>
+            <div id="donationWallet" class="wallet-address">0x71074075bA6FFE0BF39aCb6EDEF09b3b6be3AB6f</div>
+            <button class="button" onclick="copyWallet()">Copy Wallet Address</button>
+            <p class="note">Every bit counts. Thanks for supporting open-source builders!</p>
+        </div>
+    </div>
+    <div id="howToUseModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="document.getElementById('howToUseModal').style.display='none'">✖</span>
+            <h2>How to Use the Non-Custodial NFT Staking Platform</h2>
+            <p>This platform is <strong>non-custodial</strong>, meaning your NFTs remain in your wallet during staking. This is achieved by using smart contract approvals, where you grant the staking contract permission to manage your NFTs without transferring ownership.</p>
+            <p>Follow these steps to use the platform effectively:</p>
+            <ul>
+                <li><strong>Select Network:</strong> Choose between Cronos or Polygon network from the dropdown.</li>
+                <li><strong>Connect Wallet:</strong> Click "Connect Wallet" to link your MetaMask wallet. Ensure MetaMask is installed and you are connected to the selected network.</li>
+                <li><strong>Deploy a Pool:</strong> In the "Deploy New Staking Pool" section, enter the required details (NFT contract address, reward token address, start/end times, total rewards, pool name). Deploying a pool requires <strong>two signatures</strong> in MetaMask: one to approve the reward tokens and one to create the pool.</li>
+                <li><strong>Stake NFTs:</strong> Select a pool from "Available Pools" and click "Approve NFTs" to allow the pool to manage your NFTs. Then, click "Stake All NFTs" to stake all owned NFTs, or use "Select All for Stake" to choose specific NFTs.</li>
+                <li><strong>Bonus NFTs:</strong> If the pool has a bonus NFT configured, click "Approve Bonus NFTs" first, then stake up to 3 bonus NFTs for reward multipliers (3% each, max 9%).</li>
+                <li><strong>Unstake and Claim:</strong> In the "Unstake NFTs" section, view staked NFTs and pending rewards. Select NFTs to unstake or claim rewards.</li>
+                <li><strong>Manage Pools:</strong> If you own a pool, use the "Manage Pool" section to update end time, reward token name, set bonus NFT, add rewards, withdraw excess, or end the pool. Ended pools can still be managed by their creators.</li>
+                <li><strong>MetaMask:</strong> All transactions (deploying, staking, unstaking, claiming, managing) will prompt MetaMask to open for confirmation.</li>
+                <li><strong>Ended Pools:</strong> Pool creators can view and manage their ended pools in the "Ended Pools" section. Make sure you withdraw remaining tokens right after ending pool.</li>
+            </ul>
+            <p class="note">Note: Ensure you have enough gas in your wallet for transactions. If NFT loading is slow or incomplete, some NFTs may have non-sequential IDs.</p>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.15.0/ethers.umd.min.js"></script>
+    <script src="../javascript/stake-javascript.js"></script>
+</body>
+</html>
