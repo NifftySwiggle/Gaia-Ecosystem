@@ -1,0 +1,522 @@
+/* Dark theme with purple-green accents */
+:root {
+    --purple: #6A1B9A;
+    --green: #00C853;
+    --dark-bg: #0A0A0A;
+    --text-light: #E0E0E0;
+    --gradient: linear-gradient(135deg, var(--purple), var(--green));
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: var(--dark-bg);
+    color: var(--text-light);
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+    scroll-snap-type: y mandatory; /* Enables snap scrolling */
+}
+
+header {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10; /* Above planet and sections */
+}
+
+.logo img {
+    height: 50px; /* Small header logo */
+    width: auto;
+}
+
+nav a {
+    color: var(--text-light);
+    margin: 0 1rem;
+    padding-right: 2rem;
+    text-decoration: none;
+    transition: color 0.3s;
+    font-weight: 600;
+}
+
+nav a:hover {
+    color: var(--green); /* Green accent on hover */
+}
+
+/* Planet world with continuous rotation support */
+.planet {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1; /* Stays behind content */
+    transition: transform 0.1s linear;
+    will-change: transform; /* Optimize for performance */
+}
+
+.planet img {
+    width: 300px; /* Base size */
+    height: auto;
+}
+
+/* Shimmering and moving stars background */
+.stars {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+    background: transparent;
+}
+
+.star {
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+    animation: shimmer 2s infinite ease-in-out, drift 20s linear infinite;
+}
+
+@keyframes shimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+@keyframes drift {
+    0% { transform: translate(0, 0); }
+    100% { transform: translate(calc(-10vw + 20vw * var(--rand-x)), calc(-10vh + 20vh * var(--rand-y))); }
+}
+
+/* Shooting stars */
+.shooting-star {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    opacity: 0;
+    animation: shoot 5s linear infinite;
+    animation-delay: calc(var(--delay) * 1s);
+}
+
+@keyframes shoot {
+    0% { transform: translate(var(--start-x), var(--start-y)); opacity: 0; }
+    10% { opacity: 1; }
+    100% { transform: translate(var(--end-x), var(--end-y)); opacity: 0; }
+}
+
+/* Container and sections */
+.container {
+    padding-top: 80px; /* Adjust for fixed header height */
+    max-width: 1200px;
+    margin: auto;
+    padding: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.section {
+    height: auto; /* Adjusted from 100vh to fit content */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    scroll-snap-align: start;
+    position: relative;
+    z-index: 5;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 12px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.section:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 40px rgba(0, 0, 0, 0.3);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    width: 100%;
+}
+
+h1, h2 {
+    margin-top: 5rem;
+    background: var(--gradient);
+    background-clip: true;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    text-align: center;
+}
+
+h2 {
+    font-size: 1.5rem;
+}
+
+/* Buttons */
+.button {
+    padding: 12px 24px;
+    background: var(--gradient);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: background 0.3s ease, transform 0.2s ease;
+    margin: 5px;
+}
+
+.button:hover {
+    background: linear-gradient(135deg, #5A0B8A, #00A843); /* Darkened gradient */
+    transform: scale(1.05);
+}
+
+.button:disabled {
+    background: #666;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.toggle-button {
+    background: var(--green);
+    margin-bottom: 10px;
+}
+
+.toggle-button.collapsed {
+    background: var(--purple);
+}
+
+.toggle-button:hover {
+    background: #009639; /* Darkened green */
+}
+
+.toggle-button.collapsed:hover {
+    background: #590A89; /* Darkened purple */
+}
+
+/* Inputs and Selects */
+input, select {
+    padding: 10px;
+    margin: 8px;
+    width: 220px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-light);
+    font-size: 0.9rem;
+    transition: background 0.3s ease;
+}
+
+select {
+    color: #2ffe05;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+input:focus, select:focus {
+    outline: none;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+input::placeholder {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+input[type="file"] {
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-light);
+}
+
+input[type="file"]::-webkit-file-upload-button {
+    background: var(--gradient);
+    color: rgb(41, 40, 40);
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+input[type="file"]::-webkit-file-upload-button:hover {
+    background: linear-gradient(135deg, #5A0B8A, #00A843);
+}
+
+/* NFT and Pool Grids */
+.nft-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.nft-item {
+    text-align: center;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    transition: transform 0.3s ease;
+}
+
+.nft-item:hover {
+    transform: scale(1.05);
+}
+
+.nft-item img {
+    max-width: 100px;
+    height: auto;
+    border-radius: 8px;
+}
+
+.pool-container {
+    display: flex;
+    overflow-x: auto;
+    gap: 15px;
+    padding-bottom: 10px;
+}
+
+.pool-tile {
+    flex: 0 0 200px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.pool-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.pool-tile p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+.pool-tile .status-ended {
+    color: #ff6b6b;
+    font-weight: 600;
+}
+
+.pool-tile img {
+    max-width: 100px;
+    max-height: 100px;
+    height: auto;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    object-fit: cover;
+}
+
+.pool-tile .text-content {
+    max-width: 150px;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+/* Status Messages */
+.error {
+    color: #ff6b6b;
+    font-weight: 600;
+}
+
+.success {
+    color: var(--green);
+    font-weight: 600;
+}
+
+#loading {
+    display: none;
+    margin: 10px 0;
+    font-style: italic;
+    color: var(--text-light);
+}
+
+#walletStatus {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    height: 8px;
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--gradient);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #5A0B8A, #00A843);
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 30px 20px;
+    background: transparent;
+    color: var(--text-light);
+    margin-top: 20px;
+}
+
+footer p {
+    margin-bottom: 10px;
+    font-size: 1rem;
+}
+
+footer strong {
+    font-weight: 600;
+    color: var(--green);
+}
+
+/* Modals */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    padding: 30px;
+    border-radius: 16px;
+    max-width: 500px;
+    width: 90%;
+    text-align: left;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text-light);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.modal-content h2 {
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+    background: var(--gradient);
+    background-clip: true;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.modal-content p, .modal-content li {
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+
+.modal-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--text-light);
+}
+
+.wallet-address {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 8px;
+    margin: 10px 0;
+    word-break: break-all;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.modal-content .button {
+    margin-top: 10px;
+}
+
+.modal-content .note {
+    margin-top: 15px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+#howToUseModal .modal-content {
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+    padding-bottom: 48px;
+}
+
+#howToUseModal .modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--text-light);
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 50%;
+}
+
+/* Responsive */
+@media (max-width: 400px) {
+    .modal-content {
+        padding: 12px;
+        font-size: 0.85rem;
+    }
+    .button {
+        padding: 10px 16px;
+        font-size: 0.95rem;
+    }
+    input, select {
+        width: 100%;
+        font-size: 0.85rem;
+    }
+    .planet img { width: 200px; }
+    .content { max-width: 90%; }
+    nav { 
+        flex-direction: column; 
+        align-items: center; 
+    }
+    nav a { 
+        margin: 0.5rem 0; 
+    }
+}
