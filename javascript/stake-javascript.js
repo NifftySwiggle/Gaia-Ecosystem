@@ -1297,7 +1297,7 @@ async function addRewards() {
     if (!manageStatus) return;
     try {
         const poolAddr = document.getElementById("managePool")?.value;
-        const amountInput = document.getElementById("addRewardsAmount");
+        const amountInput = document.getElementById("addRewardAmount");
         if (!poolAddr || !amountInput) throw new Error("Pool or amount input not found");
         const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
         const rewardTokenAddr = await poolContract.rewardToken();
@@ -1316,7 +1316,7 @@ async function addRewards() {
         const balance = await provider.getBalance(account);
         if (balance < txFee) throw new Error(`Insufficient balance for tx fee: ${ethers.formatEther(txFee)} ${selectedNetwork === 'cronos' ? 'CRO' : 'MATIC'} required`);
 
-        const gasEstimate = await poolContract.addRewards.estimateGas(amount);
+        const gasEstimate = await poolContract.addRewards.estimateGas(amount, { value: txFee });
         const tx = await poolContract.addRewards(amount, { value: txFee, gasLimit: gasEstimate * 12n / 10n });
         await tx.wait();
         displaySuccess("manageStatus", "Rewards added successfully!");
