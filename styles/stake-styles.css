@@ -296,6 +296,24 @@ input[type="file"]::-webkit-file-upload-button:hover {
     overflow-x: auto;
     gap: 15px;
     padding-bottom: 10px;
+    scrollbar-width: thin; /* For Firefox */
+    scrollbar-color: #007bff #222;
+    /*overflow-x: scroll;/* Enable horizontal scrolling */
+}
+
+/* Optional: Style the scrollbar for Webkit browsers */
+.pool-container::-webkit-scrollbar {
+    height: 8px;
+    background: #222;
+}
+
+.pool-container::-webkit-scrollbar-thumb {
+    background: #007bff;
+    border-radius: 10px;
+}
+
+.pool-container::-webkit-scrollbar-thumb:hover {
+    background: #0056b3;
 }
 
 .pool-tile {
