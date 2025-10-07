@@ -97,6 +97,13 @@ const erc20ABI = [
 
 const imageStorage = {};
 
+const ipfsGateways = [
+    "https://ipfs.io/ipfs/",
+    "https://cloudflare-ipfs.com/ipfs/",
+    "https://gateway.pinata.cloud/ipfs/",
+    "https://nftstorage.link/ipfs/"
+];
+
 function createStars() {
     const starsContainer = document.getElementById('stars');
     if (!starsContainer) return;
@@ -137,20 +144,16 @@ async function getDefaultNFTImage(nftAddr) {
             console.warn(`Failed to load tokenURI for token 1 at ${nftAddr}: ${e.message}`);
             return 'https://placehold.co/100x100';
         }
-        try {
-            const metadataRes = await fetch(
-                tokenURI.startsWith("ipfs://")
-                    ? `https://ipfs.io/ipfs/${tokenURI.slice(7)}`
-                    : tokenURI
-            );
-            const metadata = await metadataRes.json();
-            return metadata.image.startsWith("ipfs://")
-                ? `https://ipfs.io/ipfs/${metadata.image.slice(7)}`
-                : metadata.image;
-        } catch (e) {
-            console.warn(`Failed to fetch metadata for token 1 at ${nftAddr}: ${e.message}`);
-            return 'https://placehold.co/100x100';
+        let metadata;
+        if (tokenURI.startsWith("ipfs://")) {
+            metadata = await fetchIpfsJson(tokenURI);
+        } else {
+            const metadataRes = await fetch(tokenURI);
+            metadata = await metadataRes.json();
         }
+        return metadata.image.startsWith("ipfs://")
+            ? `https://ipfs.io/ipfs/${metadata.image.slice(7)}`
+            : metadata.image;
     } catch (e) {
         console.warn(`Error fetching default NFT image for ${nftAddr}: ${e.message}`);
         return 'https://placehold.co/100x100';
@@ -458,31 +461,29 @@ async function loadPools() {
                 if (!isEnded) {
                     activeCount++;
                     targetDiv.innerHTML += `
-                        <div class="pool-tile">
-                            <img src="${imageStorage[poolAddr] || await getDefaultNFTImage(nftAddr)}" alt="${name}">
-                            <div class="text-content">
-                                <p><strong>${name}</strong></p>
-                                <p>Reward Token: ${rewardTokenName}</p>
-                                <p>Start: ${startDate}</p>
-                                <p>End: ${endDate}</p>
-                                <p>Rewards: ${rewardsFormatted}</p>
-                            </div>
-                        </div>`;
+        <div class="pool-tile">
+            <div class="text-content">
+                <p><strong>${name}</strong></p>
+                <p>Reward Token: ${rewardTokenName}</p>
+                <p>Start: ${startDate}</p>
+                <p>End: ${endDate}</p>
+                <p>Rewards: ${rewardsFormatted}</p>
+            </div>
+        </div>`;
                     select.innerHTML += `<option value="${poolAddr}">${name}</option>`;
                 } else if (isOwner) {
                     hasEndedPools = true;
                     targetDiv.innerHTML += `
-                        <div class="pool-tile">
-                            <img src="${imageStorage[poolAddr] || await getDefaultNFTImage(nftAddr)}" alt="${name}">
-                            <div class="text-content">
-                                <p><strong>${name}</strong></p>
-                                <p>Reward Token: ${rewardTokenName}</p>
-                                <p>Start: ${startDate}</p>
-                                <p>End: ${endDate}</p>
-                                <p>Rewards: ${rewardsFormatted}</p>
-                                <p class="status-ended">Status: Ended</p>
-                            </div>
-                        </div>`;
+        <div class="pool-tile">
+            <div class="text-content">
+                <p><strong>${name}</strong></p>
+                <p>Reward Token: ${rewardTokenName}</p>
+                <p>Start: ${startDate}</p>
+                <p>End: ${endDate}</p>
+                <p>Rewards: ${rewardsFormatted}</p>
+                <p class="status-ended">Status: Ended</p>
+            </div>
+        </div>`;
                 }
                 if (isOwner) {
                     manageSelect.innerHTML += `<option value="${poolAddr}">${name}${isEnded ? ' (Ended)' : ''}</option>`;
@@ -629,16 +630,7 @@ async function loadNFTs() {
                 try {
                     for (let i = 0n; i < balance; i++) {
                         const tokenId = await nftContract.tokenOfOwnerByIndex(account, i);
-                        let tokenURI = "";
-                        try {
-                            tokenURI = await nftContract.tokenURI(tokenId);
-                            if (!tokenURI || (!tokenURI.startsWith("http") && !tokenURI.startsWith("ipfs://"))) {
-                                console.warn(`Invalid tokenURI for token ${tokenId} at ${nftAddr}`);
-                            }
-                        } catch (e) {
-                            console.warn(`Failed to load tokenURI for token ${tokenId}: ${e.message}`);
-                        }
-                        nfts.push({ id: tokenId, uri: tokenURI });
+                        nfts.push({ id: tokenId });
                     }
                 } catch (e) {
                     console.warn(`Error fetching tokens via tokenOfOwnerByIndex: ${e.message}`);
@@ -648,7 +640,7 @@ async function loadNFTs() {
             }
 
             if (!enumerableSupported) {
-                let maxTokenId = 10000n;
+                let maxTokenId = 10001n;
                 try {
                     maxTokenId = await nftContract.totalSupply();
                     console.log(`Total supply for ${nftAddr}: ${maxTokenId}`);
@@ -674,16 +666,7 @@ async function loadNFTs() {
                     for (const result of results) {
                         if (result.status === "fulfilled" && result.value.owner?.toLowerCase() === account.toLowerCase()) {
                             const tokenId = result.value.tokenId;
-                            let tokenURI = "";
-                            try {
-                                tokenURI = await nftContract.tokenURI(tokenId);
-                                if (!tokenURI || (!tokenURI.startsWith("http") && !tokenURI.startsWith("ipfs://"))) {
-                                    console.warn(`Invalid tokenURI for token ${tokenId} at ${nftAddr}`);
-                                }
-                            } catch (e) {
-                                console.warn(`Failed to load tokenURI for token ${tokenId}: ${e.message}`);
-                            }
-                            nfts.push({ id: tokenId, uri: tokenURI });
+                            nfts.push({ id: tokenId });
                             foundCount++;
                         }
                     }
@@ -704,68 +687,33 @@ async function loadNFTs() {
                     elements.nftStatus.innerHTML += `<p class="warning">Warning: Found ${nfts.length} NFTs, but balanceOf reported ${balance}. Some tokens may have high IDs or the contract is non-standard.</p>`;
                 }
             }
-
-            for (const nft of nfts) {
-                let imageURL = 'https://placehold.co/100x100';
-                if (nft.uri) {
-                    try {
-                        const metadataRes = await fetch(
-                            nft.uri.startsWith("ipfs://")
-                                ? `https://ipfs.io/ipfs/${nft.uri.slice(7)}`
-                                : nft.uri
-                        );
-                        const metadata = await metadataRes.json();
-                        imageURL = metadata.image.startsWith("ipfs://")
-                            ? `https://ipfs.io/ipfs/${metadata.image.slice(7)}`
-                            : metadata.image;
-                    } catch (e) {
-                        console.warn(`Failed to fetch metadata for token ${nft.id}: ${e.message}`);
-                    }
-                }
-                elements.nfts.innerHTML += `
-                    <div class="nft-item">
-                        <input type="checkbox" class="nft-checkbox" data-id="${nft.id}">
-                        <img src="${imageURL}" alt="NFT ${nft.id}">
-                        <p>Token ID: ${nft.id}</p>
-                    </div>`;
-            }
         }
 
         const stakedTokens = await poolContract.getUserStakedTokens(account);
-        for (const tokenId of stakedTokens) {
-            let tokenURI = "";
-            try {
-                tokenURI = await nftContract.tokenURI(tokenId);
-                if (!tokenURI || (!tokenURI.startsWith("http") && !tokenURI.startsWith("ipfs://"))) {
-                    console.warn(`Invalid tokenURI for staked token ${tokenId} at ${nftAddr}`);
-                }
-            } catch (e) {
-                console.warn(`Failed to load tokenURI for staked token ${tokenId}: ${e.message}`);
-            }
-            let imageURL = 'https://placehold.co/100x100';
-            if (tokenURI) {
-                try {
-                    const metadataRes = await fetch(
-                        tokenURI.startsWith("ipfs://")
-                            ? `https://ipfs.io/ipfs/${tokenURI.slice(7)}`
-                            : tokenURI
-                    );
-                    const metadata = await metadataRes.json();
-                    imageURL = metadata.image.startsWith("ipfs://")
-                        ? `https://ipfs.io/ipfs/${metadata.image.slice(7)}`
-                        : metadata.image;
-                } catch (e) {
-                    console.warn(`Failed to fetch metadata for staked token ${tokenId}: ${e.message}`);
-                }
-            }
-            elements.stakedNFTs.innerHTML += `
-                <div class="nft-item">
-                    <input type="checkbox" class="staked-nft-checkbox" data-id="${tokenId}">
-                    <img src="${imageURL}" alt="Staked NFT ${tokenId}">
-                    <p>Token ID: ${tokenId}</p>
-                </div>`;
+
+        // Filter out staked NFTs from the list of owned NFTs
+        const unstakedNFTs = nfts.filter(nft => !stakedTokens.includes(nft.id));
+
+        // Display only unstaked NFTs in the stake section
+        elements.nfts.innerHTML = "";
+        for (const nft of unstakedNFTs) {
+            elements.nfts.innerHTML += `
+        <div class="nft-item">
+            <input type="checkbox" class="nft-checkbox" data-id="${nft.id}">
+            <p>Token ID: ${nft.id}</p>
+        </div>`;
         }
-        elements.stakeNFTs.disabled = nfts.length === 0;
+        elements.stakeNFTs.disabled = unstakedNFTs.length === 0;
+
+        // Display staked NFTs in the unstake section (unchanged)
+        elements.stakedNFTs.innerHTML = "";
+        for (const tokenId of stakedTokens) {
+            elements.stakedNFTs.innerHTML += `
+        <div class="nft-item">
+            <input type="checkbox" class="staked-nft-checkbox" data-id="${tokenId}">
+            <p>Token ID: ${tokenId}</p>
+        </div>`;
+        }
         const unstakeNFTs = document.getElementById("unstakeNFTs");
         if (unstakeNFTs) unstakeNFTs.disabled = stakedTokens.length === 0;
         elements.claimRewards.disabled = stakedTokens.length === 0;
@@ -817,13 +765,7 @@ async function loadNFTs() {
                     for (const result of results) {
                         if (result.status === "fulfilled" && result.value.owner?.toLowerCase() === account.toLowerCase()) {
                             const tokenId = result.value.tokenId;
-                            let tokenURI = "";
-                            try {
-                                tokenURI = await bonusContract.tokenURI(tokenId);
-                            } catch (e) {
-                                console.warn(`Failed to load tokenURI for bonus token ${tokenId}: ${e.message}`);
-                            }
-                            bonusNfts.push({ id: tokenId, uri: tokenURI });
+                            bonusNfts.push({ id: tokenId });
                         }
                     }
                     if (BigInt(bonusNfts.length) >= bonusBalance) {
@@ -842,62 +784,22 @@ async function loadNFTs() {
                 }
 
                 for (const nft of bonusNfts) {
-                    let imageURL = 'https://placehold.co/100x100';
-                    if (nft.uri) {
-                        try {
-                            const metadataRes = await fetch(
-                                nft.uri.startsWith("ipfs://")
-                                    ? `https://ipfs.io/ipfs/${nft.uri.slice(7)}`
-                                    : nft.uri
-                            );
-                            const metadata = await metadataRes.json();
-                            imageURL = metadata.image.startsWith("ipfs://")
-                                ? `https://ipfs.io/ipfs/${metadata.image.slice(7)}`
-                                : metadata.image;
-                        } catch (e) {
-                            console.warn(`Failed to fetch metadata for bonus token ${nft.id}: ${e.message}`);
-                        }
-                    }
                     elements.bonusNfts.innerHTML += `
-                        <div class="nft-item">
-                            <input type="checkbox" class="bonus-nft-checkbox" data-id="${nft.id}">
-                            <img src="${imageURL}" alt="Bonus NFT ${nft.id}">
-                            <p>Token ID: ${nft.id}</p>
-                        </div>`;
+        <div class="nft-item">
+            <input type="checkbox" class="bonus-nft-checkbox" data-id="${nft.id}">
+            <p>Token ID: ${nft.id}</p>
+        </div>`;
                 }
             }
 
             const stakedBonusTokens = await poolContract.getUserBonusStakedTokens(account);
             for (const tokenId of stakedBonusTokens) {
-                let tokenURI = "";
-                try {
-                    tokenURI = await bonusContract.tokenURI(tokenId);
-                } catch (e) {
-                    console.warn(`Failed to load tokenURI for staked bonus token ${tokenId}: ${e.message}`);
-                }
-                let imageURL = 'https://placehold.co/100x100';
-                if (tokenURI) {
-                    try {
-                        const metadataRes = await fetch(
-                            tokenURI.startsWith("ipfs://")
-                                ? `https://ipfs.io/ipfs/${tokenURI.slice(7)}`
-                                : tokenURI
-                        );
-                        const metadata = await metadataRes.json();
-                        imageURL = metadata.image.startsWith("ipfs://")
-                            ? `https://ipfs.io/ipfs/${metadata.image.slice(7)}`
-                            : metadata.image;
-                    } catch (e) {
-                        console.warn(`Failed to fetch metadata for staked bonus token ${tokenId}: ${e.message}`);
-                    }
-                }
                 elements.stakedBonusNFTs.innerHTML += `
-                    <div class="nft-item">
-                        <input type="checkbox" class="staked-bonus-nft-checkbox" data-id="${tokenId}">
-                        <img src="${imageURL}" alt="Staked Bonus NFT ${tokenId}">
-                        <p>Token ID: ${tokenId}</p>
-                    </div>`;
-                }
+        <div class="nft-item">
+            <input type="checkbox" class="staked-bonus-nft-checkbox" data-id="${tokenId}">
+            <p>Token ID: ${tokenId}</p>
+        </div>`;
+            }
             elements.stakeBonusNFTs.disabled = bonusNfts.length === 0 || stakedBonusTokens.length >= 3;
             const unstakeBonusNFTs = document.getElementById("unstakeBonusNFTs");
             if (unstakeBonusNFTs) unstakeBonusNFTs.disabled = stakedBonusTokens.length === 0;
@@ -1695,3 +1597,33 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
     });
+
+async function fetchIpfsJson(ipfsUri) {
+    if (!ipfsUri.startsWith("ipfs://")) return null;
+    const cid = ipfsUri.slice(7);
+    for (const gateway of ipfsGateways) {
+        try {
+            const res = await fetch(gateway + cid, { method: "GET" });
+            if (res.ok) return await res.json();
+        } catch (e) {
+            // Try next gateway
+        }
+    }
+    return null;
+}
+
+async function getIpfsImageUrl(ipfsUri) {
+    if (!ipfsUri.startsWith("ipfs://")) return ipfsUri;
+    const cid = ipfsUri.slice(7);
+    for (const gateway of ipfsGateways) {
+        try {
+            // Optionally, check if the image exists
+            const res = await fetch(gateway + cid, { method: "HEAD" });
+            if (res.ok) return gateway + cid;
+        } catch (e) {
+            // Try next gateway
+        }
+    }
+    // Fallback to first gateway
+    return ipfsGateways[0] + cid;
+}
