@@ -877,11 +877,12 @@ async function loadNFTs() {
                 return;
             }
             const bonusNfts = [];
+            let bonusMaxTokenId = 10000n;
+
             if (bonusBalance == 0n) {
                 elements.bonusNfts.innerHTML = `<p class="error">No bonus NFTs owned for contract ${bonusAddr} (scanned up to token ID ${bonusMaxTokenId - 1n})</p>`;
                 elements.stakeBonusNFTs.disabled = true;
             } else {
-                let bonusMaxTokenId = 10000n;
                 try {
                     bonusMaxTokenId = await bonusContract.totalSupply();
                     console.log(`Total supply for bonus NFT ${bonusAddr}: ${bonusMaxTokenId}`);
@@ -1544,7 +1545,7 @@ async function setEndTime() {
 
         const gasEstimate = await poolContract.setEndTime.estimateGas(newEnd, { value: txFee });
         const tx = await poolContract.setEndTime(newEnd, { value: txFee, gasLimit: gasEstimate * 12n / 10n });
-                      await tx.wait();
+        await tx.wait();
         displaySuccess("manageStatus", "End time updated successfully!");
         await loadPools();
     } catch (error) {
