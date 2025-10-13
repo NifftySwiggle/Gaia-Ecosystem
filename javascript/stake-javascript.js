@@ -860,6 +860,7 @@ async function loadNFTs() {
 
         // Bonus NFT logic unchanged (can be refactored similarly if needed)
         const bonusAddr = await poolContract.bonusNFT();
+        let bonusNfts = []; 
         if (bonusAddr !== ethers.ZeroAddress) {
             const bonusElements = ["bonusNfts", "approveBonusNFTs", "selectAllBonusStake", "stakeBonusNFTs", "stakedBonusNFTs", "selectAllBonusUnstake", "unstakeBonusNFTs"];
             bonusElements.forEach(id => {
@@ -876,7 +877,6 @@ async function loadNFTs() {
                 elements.stakeBonusNFTs.disabled = true;
                 return;
             }
-            const bonusNfts = [];
             let bonusMaxTokenId = 10000n;
 
             if (bonusBalance == 0n) {
@@ -907,7 +907,7 @@ async function loadNFTs() {
                     for (const result of results) {
                         if (result.status === "fulfilled" && result.value.owner?.toLowerCase() === account.toLowerCase()) {
                             const tokenId = result.value.tokenId;
-                            bonusNfts.push({ id: tokenId });
+                            bonusNfts.push({ id: tokenId }); // <-- This line needs bonusNfts to be an array
                         }
                     }
                     if (BigInt(bonusNfts.length) >= bonusBalance) {
@@ -1680,7 +1680,6 @@ async function setRewardToken() {
         const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
 
         const txFee = await poolContract.txFee();
-       
         const balance = await provider.getBalance(account);
         if (balance < txFee) throw new Error(`Insufficient balance for tx fee: ${ethers.formatEther(txFee)} ${selectedNetwork === 'cronos' ? 'CRO' : 'MATIC'} required`);
 
