@@ -377,6 +377,25 @@ input[type="file"]::-webkit-file-upload-button:hover {
     color: var(--text-light);
 }
 
+/* Add or update these rules for error, success, and wallet-address classes */
+
+.error, .success, .wallet-address {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* If you have other status classes, add them too */
+.status {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     height: 8px;
