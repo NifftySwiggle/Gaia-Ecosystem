@@ -293,36 +293,30 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .pool-container {
     display: flex;
-    overflow-x: auto;
+    flex-wrap: wrap;
     gap: 15px;
     padding-bottom: 10px;
-    scrollbar-width: thin; /* For Firefox */
-    scrollbar-color: #007bff #222;
-    /*overflow-x: scroll;/* Enable horizontal scrolling */
-}
-
-/* Optional: Style the scrollbar for Webkit browsers */
-.pool-container::-webkit-scrollbar {
-    height: 8px;
-    background: #222;
-}
-
-.pool-container::-webkit-scrollbar-thumb {
-    background: #007bff;
-    border-radius: 10px;
-}
-
-.pool-container::-webkit-scrollbar-thumb:hover {
-    background: #0056b3;
+    max-height: 220px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    justify-content: center;
+    align-items: center;
 }
 
 .pool-tile {
-    flex: 0 0 200px;
+    flex: 0 0 200px;           /* Original width for each tile */
+    max-width: 200px;
+    min-height: 210px;
+    max-height: 210px;
     background: rgba(255, 255, 255, 0.15);
     border-radius: 8px;
     padding: 15px;
     border: 1px solid rgba(255, 255, 255, 0.3);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-sizing: border-box;
 }
 
 .pool-tile:hover {
