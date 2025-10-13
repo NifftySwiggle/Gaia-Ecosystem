@@ -15,15 +15,15 @@ window.addEventListener('scroll', () => {
 const networkConfig = {
     cronos: {
         chainId: '0x19',
-        factoryAddress: "0x757a1338117eb12273bf97e07D0344Fd073F89b7",
+        factoryAddress: "0x72fA6FfE1DD89D454C37641A02df568f91AdCaA8",
         rpcUrl: "https://evm.cronos.org",
         usdcAddress: "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59"
     },
     polygon: {
         chainId: '0x89',
-        factoryAddress: "0x0B9ad210e1c51465C8f450dD75CA1A5c0024A077",
+        factoryAddress: "0x354b39c945d5aaf5C6cF64466a5C5e7860D5679d",
         rpcUrl: "https://polygon-rpc.com",
-        usdcAddress: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+        usdcAddress: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
     }
 };
 
@@ -54,9 +54,8 @@ const poolABI = [
     "function unstakeBonus(uint256[] tokenIds) external payable",
     "function endPoolNow() external",
     "function withdrawRemaining() external",
-    "function offChainStake(uint256 tokenId, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external payable",
-    "function nonces(address account) external view returns (uint256)",
     "function getUserStakedTokens(address user) external view returns (uint256[])",
+    "function getUserBonusStakedTokens(address user) external view returns (uint256[])",
     "function earned(address account) external view returns (uint256)",
     "function nft() external view returns (address)",
     "function rewardToken() external view returns (address)",
@@ -67,13 +66,19 @@ const poolABI = [
     "function startTime() external view returns (uint256)",
     "function endTime() external view returns (uint256)",
     "function totalRewards() external view returns (uint256)",
-    "function txFee() view returns (uint256)",
-    "function getUserBonusStakedTokens(address) view returns (uint256[])",
-    "function getUserMultiplier(address) view returns (uint256)",
-    "function stakedBy(uint256 tokenId) view returns (address)",
-    // New functions added to ABI
+    "function txFee() external view returns (uint256)",
+    "function getNFTMultiplier(address user) external view returns (uint256)",
+    "function stakedBy(uint256 tokenId) external view returns (address)",
+    "function setPoolName(string newName) external payable",
     "function setNFT(address newNFT) external payable",
-    "function setRewardToken(address newRewardToken) external payable"
+    "function setRewardToken(address newRewardToken) external payable",
+    "function nftRewards(uint256 tokenId) external view returns (uint256)",
+    // optional internals useful for debugging (many pools expose these as public views)
+    "function rewardPerTokenStored() external view returns (uint256)",
+    "function rewardPerToken() external view returns (uint256)",
+    "function lastUpdateTime() external view returns (uint256)",
+    "function nftRewardPerTokenPaid(uint256 tokenId) external view returns (uint256)",
+    "function totalNFTsStaked() external view returns (uint256)"
 ];
 
 const erc721ABI = [
@@ -424,7 +429,10 @@ async function setExempt() {
     }
 }
 
+let poolsLoading = false;
 async function loadPools() {
+    if (poolsLoading) return; // Prevent parallel loads
+    poolsLoading = true;
     const poolsDiv = document.getElementById("pools");
     const endedPoolsDiv = document.getElementById("endedPools");
     const select = document.getElementById("selectedPool");
@@ -452,9 +460,27 @@ async function loadPools() {
                 const totalRewards = await poolContract.totalRewards();
                 const nftAddr = await poolContract.nft();
                 const rewardTokenName = await poolContract.rewardTokenName();
+
+                // --- NEW: detect reward token decimals and format correctly ---
+                let rewardsFormatted = "N/A";
+                try {
+                    const rewardTokenAddr = await poolContract.rewardToken();
+                    const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, provider);
+                    let rewardTokenDecimals = 18;
+                    try {
+                        rewardTokenDecimals = await rewardContract.decimals();
+                    } catch (decErr) {
+                        console.warn(`Could not fetch reward token decimals for pool ${poolAddr}: ${decErr.message}. Defaulting to 18.`);
+                    }
+                    rewardsFormatted = ethers.formatUnits(totalRewards, rewardTokenDecimals);
+                } catch (formatErr) {
+                    console.warn(`Could not format totalRewards for pool ${poolAddr}: ${formatErr.message}`);
+                    rewardsFormatted = ethers.formatUnits(totalRewards, 18);
+                }
+                // --- END NEW ---
+
                 const startDate = new Date(Number(startTime) * 1000).toLocaleString();
                 const endDate = new Date(Number(endTime) * 1000).toLocaleString();
-                const rewardsFormatted = ethers.formatUnits(totalRewards, 18);
                 const isEnded = Number(endTime) <= now;
                 const isOwner = owner.toLowerCase() === account.toLowerCase();
                 const targetDiv = isEnded ? endedPoolsDiv : poolsDiv;
@@ -504,6 +530,8 @@ async function loadPools() {
         console.error('Load pools error:', error);
         poolsDiv.innerHTML = `<p class="error">Error loading pools: ${error.message}</p>`;
         endedPoolsDiv.innerHTML = `<p class="error">Error loading ended pools: ${error.message}</p>`;
+    } finally {
+        poolsLoading = false;
     }
 }
 
@@ -542,6 +570,41 @@ async function loadMyPools() {
     }
 }
 
+// Add these global sets to track selection across pages
+const selectedStakeNFTs = new Set();
+const selectedUnstakeNFTs = new Set();
+const selectedStakeBonusNFTs = new Set();
+
+let stakePage = 0;
+let unstakePage = 0;
+const PAGE_SIZE = 100;
+
+// Helper to render paginated NFTs
+function renderNFTPage(nfts, container, page, selectedSet, checkboxClass, type) {
+    container.innerHTML = "";
+    const start = page * PAGE_SIZE;
+    const end = Math.min(start + PAGE_SIZE, nfts.length);
+    for (let i = start; i < end; i++) {
+        const nft = nfts[i];
+        container.innerHTML += `
+            <div class="nft-item">
+                <input type="checkbox" class="${checkboxClass}" data-id="${nft.id}" ${selectedSet.has(nft.id) ? "checked" : ""}>
+                <p>Token ID: ${nft.id}</p>
+            </div>`;
+    }
+    // Pagination controls
+    container.innerHTML += `
+        <div style="margin-top:10px;">
+            <button id="${type}PrevPage" class="button" ${page === 0 ? "disabled" : ""}>Previous</button>
+            <span> Page ${page + 1} / ${Math.ceil(nfts.length / PAGE_SIZE)} </span>
+            <button id="${type}NextPage" class="button" ${end >= nfts.length ? "disabled" : ""}>Next</button>
+        </div>
+        <button id="${type}SelectAll" class="button">Select All</button>
+        <button id="${type}UnselectAll" class="button">Unselect All</button>
+    `;
+}
+
+// Update loadNFTs to use pagination and global selection
 async function loadNFTs() {
     const poolAddr = document.getElementById("selectedPool")?.value;
     const elements = {
@@ -556,10 +619,8 @@ async function loadNFTs() {
         claimRewards: document.getElementById("claimRewards"),
         nftStatus: document.getElementById("nftStatus")
     };
-    if (Object.values(elements).some(el => !el)) {
-        console.warn("One or more NFT display elements not found");
-        return;
-    }
+    if (Object.values(elements).some(el => !el)) return;
+
     Object.values(elements).forEach(el => { if (el.tagName !== "BUTTON" && el.id !== "currentMultiplier") el.innerHTML = ""; });
     if (!poolAddr) {
         elements.nfts.innerHTML = "<p>Please select a pool</p>";
@@ -572,8 +633,31 @@ async function loadNFTs() {
     const loading = document.getElementById("loading");
     if (loading) loading.style.display = "block";
     try {
+        // Check pool contract exists
+        const code = await provider.getCode(poolAddr);
+        if (code === "0x") {
+            elements.nfts.innerHTML = `<p class="error">Pool contract at ${poolAddr} does not exist or is not deployed.</p>`;
+            elements.stakeNFTs.disabled = true;
+            return;
+        }
         const poolContract = new ethers.Contract(poolAddr, poolABI, provider);
-        const endTime = await poolContract.endTime();
+
+        // Defensive: check account
+        if (!isValidAddress(account)) {
+            elements.nfts.innerHTML = `<p class="error">Invalid wallet address. Please reconnect your wallet.</p>`;
+            elements.stakeNFTs.disabled = true;
+            return;
+        }
+
+        // Defensive: check pool ended
+        let endTime;
+        try {
+            endTime = await poolContract.endTime();
+        } catch (e) {
+            elements.nfts.innerHTML = `<p class="error">Error loading pool end time: ${e.message}</p>`;
+            elements.stakeNFTs.disabled = true;
+            return;
+        }
         const now = Math.floor(Date.now() / 1000);
         if (Number(endTime) <= now) {
             elements.nfts.innerHTML = `<p class="error">Selected pool has ended</p>`;
@@ -582,16 +666,29 @@ async function loadNFTs() {
             elements.claimRewards.disabled = true;
             return;
         }
-        const pending = await poolContract.earned(account);
-        elements.pendingRewards.innerHTML = `Pending Rewards: ${ethers.formatUnits(pending, 18)}`;
-        const nftAddr = await poolContract.nft();
+
+        // Defensive: get NFT contract address
+        let nftAddr;
+        try {
+            nftAddr = await poolContract.nft();
+        } catch (e) {
+            elements.nfts.innerHTML = `<p class="error">Error loading NFT contract address: ${e.message}</p>`;
+            elements.stakeNFTs.disabled = true;
+            return;
+        }
+        const nftCode = await provider.getCode(nftAddr);
+        if (nftCode === "0x") {
+            elements.nfts.innerHTML = `<p class="error">NFT contract at ${nftAddr} does not exist or is not deployed.</p>`;
+            elements.stakeNFTs.disabled = true;
+            return;
+        }
         const nftContract = new ethers.Contract(nftAddr, erc721ABI, provider);
 
+        // Defensive: check ERC-721 compliance
         let isERC721 = false;
         try {
             isERC721 = await nftContract.supportsInterface("0x80ac58cd");
         } catch (e) {
-            console.warn(`Error checking ERC-721 interface for NFT ${nftAddr}: ${e.message}`);
             elements.nfts.innerHTML = `<p class="error">NFT contract at ${nftAddr} does not support ERC-721: ${e.message}</p>`;
             elements.stakeNFTs.disabled = true;
             return;
@@ -602,16 +699,17 @@ async function loadNFTs() {
             return;
         }
 
+        // Defensive: get balance
         let balance = 0n;
         try {
             balance = await nftContract.balanceOf(account);
         } catch (e) {
-            console.warn(`Error fetching balanceOf for ${account} at ${nftAddr}: ${e.message}`);
             elements.nfts.innerHTML = `<p class="error">Error checking NFT balance: ${e.message}</p>`;
             elements.stakeNFTs.disabled = true;
             return;
         }
 
+        // NFT enumeration
         const nfts = [];
         if (balance == 0n) {
             elements.nfts.innerHTML = `<p>No NFTs owned for contract ${nftAddr}</p>`;
@@ -619,10 +717,8 @@ async function loadNFTs() {
         } else {
             let enumerableSupported = true;
             try {
-                const testTokenId = await nftContract.tokenOfOwnerByIndex(account, 0);
-                if (!testTokenId) throw new Error("No token ID returned");
+                await nftContract.tokenOfOwnerByIndex(account, 0);
             } catch (e) {
-                console.warn(`tokenOfOwnerByIndex not supported or failed for ${nftAddr}: ${e.message}`);
                 enumerableSupported = false;
             }
 
@@ -633,22 +729,18 @@ async function loadNFTs() {
                         nfts.push({ id: tokenId });
                     }
                 } catch (e) {
-                    console.warn(`Error fetching tokens via tokenOfOwnerByIndex: ${e.message}`);
                     elements.nftStatus.innerHTML += `<p class="warning">Failed to enumerate NFTs: ${e.message}. Attempting fallback method.</p>`;
                     enumerableSupported = false;
                 }
             }
 
             if (!enumerableSupported) {
-                let maxTokenId = 10001n;
+                let maxTokenId = 10000n;
                 try {
                     maxTokenId = await nftContract.totalSupply();
-                    console.log(`Total supply for ${nftAddr}: ${maxTokenId}`);
                 } catch (e) {
-                    console.warn(`totalSupply not supported or failed for ${nftAddr}: ${e.message}. Falling back to maxTokenId=10000.`);
                     elements.nftStatus.innerHTML += `<p class="warning">Warning: totalSupply not supported. Scanning up to token ID 9999.</p>`;
                 }
-
                 const batchSize = 50;
                 const tokenIds = Array.from({ length: Number(maxTokenId) }, (_, i) => BigInt(i));
                 let foundCount = 0n;
@@ -665,31 +757,25 @@ async function loadNFTs() {
                     const results = await Promise.allSettled(ownerPromises);
                     for (const result of results) {
                         if (result.status === "fulfilled" && result.value.owner?.toLowerCase() === account.toLowerCase()) {
-                            const tokenId = result.value.tokenId;
-                            nfts.push({ id: tokenId });
+                            nfts.push({ id: result.value.tokenId });
                             foundCount++;
                         }
                     }
-                    if (foundCount >= balance) {
-                        console.log(`Found ${foundCount} NFTs, matching balanceOf (${balance}). Stopping enumeration.`);
-                        break;
-                    }
+                    if (foundCount >= balance) break;
                     await new Promise(resolve => setTimeout(resolve, 100));
-                }
-
-                if (nfts.length === 0) {
-                    elements.nfts.innerHTML = `<p class="error">No NFTs found for ${account} in contract ${nftAddr} (scanned up to token ID ${maxTokenId - 1n})</p>`;
-                    elements.stakeNFTs.disabled = true;
-                    return;
-                }
-                if (BigInt(nfts.length) !== balance) {
-                    console.warn(`Mismatch: balanceOf returned ${balance}, but found ${nfts.length} NFTs via ownerOf`);
-                    elements.nftStatus.innerHTML += `<p class="warning">Warning: Found ${nfts.length} NFTs, but balanceOf reported ${balance}. Some tokens may have high IDs or the contract is non-standard.</p>`;
                 }
             }
         }
 
-        const stakedTokens = await poolContract.getUserStakedTokens(account);
+        // Defensive: get staked tokens
+        let stakedTokens = [];
+        try {
+            stakedTokens = await poolContract.getUserStakedTokens(account);
+        } catch (e) {
+            elements.nfts.innerHTML = `<p class="error">Error loading staked NFTs: ${e.message}</p>`;
+            elements.stakeNFTs.disabled = true;
+            return;
+        }
 
         // Filter out staked NFTs from the list of owned NFTs
         const unstakedNFTs = nfts.filter(nft => !stakedTokens.includes(nft.id));
@@ -705,7 +791,7 @@ async function loadNFTs() {
         }
         elements.stakeNFTs.disabled = unstakedNFTs.length === 0;
 
-        // Display staked NFTs in the unstake section (unchanged)
+        // Display staked NFTs in the unstake section
         elements.stakedNFTs.innerHTML = "";
         for (const tokenId of stakedTokens) {
             elements.stakedNFTs.innerHTML += `
@@ -718,6 +804,61 @@ async function loadNFTs() {
         if (unstakeNFTs) unstakeNFTs.disabled = stakedTokens.length === 0;
         elements.claimRewards.disabled = stakedTokens.length === 0;
 
+        // Calculate pending rewards using contract's earned() if available, else manual per-token calc
+        try {
+            const rewardTokenAddr = await poolContract.rewardToken();
+            const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, provider);
+            let rewardDecimals = 18;
+            try { rewardDecimals = await rewardContract.decimals(); } catch (e) { console.warn("Could not fetch reward token decimals, defaulting to 18"); }
+
+            let poolBalance = 0n;
+            try { poolBalance = await rewardContract.balanceOf(poolAddr); } catch (e) { console.warn("Could not fetch pool reward token balance:", e); }
+
+            let pendingBig = 0n;
+            // Prefer contract's earned(account) for accuracy (sums all user pending)
+            if (typeof poolContract.earned === 'function') {
+                try {
+                    const earned = await poolContract.earned(account);
+                    pendingBig = BigInt(earned.toString());
+                } catch (e) {
+                    console.warn("earned() failed, falling back to manual calc:", e);
+                    // fall through to manual calc below
+                }
+            }
+            if (pendingBig === 0n) {
+                // Manual per-token calc (fallback)
+                const rptNow = (typeof poolContract.rewardPerToken === 'function')
+                    ? await poolContract.rewardPerToken().catch(() => null)
+                    : null;
+                for (const tokenId of stakedTokens) {
+                    const storedAccum = await poolContract.nftRewards(tokenId).catch(() => 0n);
+                    const paid = (typeof poolContract.nftRewardPerTokenPaid === 'function')
+                        ? await poolContract.nftRewardPerTokenPaid(tokenId).catch(() => 0n)
+                        : 0n;
+                    const multiplier = (typeof poolContract.getNFTMultiplier === 'function')
+                        ? await poolContract.getNFTMultiplier(account).catch(() => 1n * 10n**18n)
+                        : 1n * 10n**18n;
+                    let delta = 0n;
+                    if (rptNow) {
+                        const rNow = BigInt(rptNow.toString());
+                        const p = BigInt(paid.toString());
+                        if (rNow > p) {
+                            delta = ((rNow - p) * BigInt(multiplier.toString())) / BigInt("1000000000000000000");
+                        }
+                    }
+                    pendingBig += BigInt(storedAccum.toString()) + delta;
+                }
+            }
+
+            // Cap to pool balance (avoid showing impossible amounts)
+            const displayPending = (poolBalance && pendingBig > BigInt(poolBalance.toString())) ? BigInt(poolBalance.toString()) : pendingBig;
+            elements.pendingRewards.innerHTML = `Pending Rewards: ${ethers.formatUnits(displayPending.toString(), rewardDecimals)}${poolBalance && pendingBig > BigInt(poolBalance.toString()) ? ' (capped by pool balance)' : ''}`;
+        } catch (e) {
+            elements.pendingRewards.innerHTML = `<span class="warning">Pending Rewards: 0 (contract error)</span>`;
+            console.warn("Could not load pending rewards:", e);
+        }
+
+        // Bonus NFT logic unchanged (can be refactored similarly if needed)
         const bonusAddr = await poolContract.bonusNFT();
         if (bonusAddr !== ethers.ZeroAddress) {
             const bonusElements = ["bonusNfts", "approveBonusNFTs", "selectAllBonusStake", "stakeBonusNFTs", "stakedBonusNFTs", "selectAllBonusUnstake", "unstakeBonusNFTs"];
@@ -737,7 +878,7 @@ async function loadNFTs() {
             }
             const bonusNfts = [];
             if (bonusBalance == 0n) {
-                elements.bonusNfts.innerHTML = `<p>No bonus NFTs owned for contract ${bonusAddr}</p>`;
+                elements.bonusNfts.innerHTML = `<p class="error">No bonus NFTs owned for contract ${bonusAddr} (scanned up to token ID ${bonusMaxTokenId - 1n})</p>`;
                 elements.stakeBonusNFTs.disabled = true;
             } else {
                 let bonusMaxTokenId = 10000n;
@@ -803,7 +944,7 @@ async function loadNFTs() {
             elements.stakeBonusNFTs.disabled = bonusNfts.length === 0 || stakedBonusTokens.length >= 3;
             const unstakeBonusNFTs = document.getElementById("unstakeBonusNFTs");
             if (unstakeBonusNFTs) unstakeBonusNFTs.disabled = stakedBonusTokens.length === 0;
-            const multiplier = await poolContract.getUserMultiplier(account);
+            const multiplier = await poolContract.getNFTMultiplier(account);
             const multiplierValue = Number(ethers.formatUnits(multiplier, 18));
             const bonusPercent = ((multiplierValue - 1) * 100).toFixed(2);
             elements.currentMultiplier.innerHTML = `Current Bonus: ${bonusPercent}%`;
@@ -843,7 +984,16 @@ async function deployPool() {
         const rewardToken = inputs.rewardToken.value;
         const startTime = Math.floor(new Date(inputs.startTime.value).getTime() / 1000);
         const endTime = Math.floor(new Date(inputs.endTime.value).getTime() / 1000);
-        const totalRewards = ethers.parseUnits(inputs.totalRewards.value, 18);
+        // --- NEW: detect reward token decimals and parse totalRewards accordingly ---
+        const rewardContract = new ethers.Contract(rewardToken, erc20ABI, signer);
+        let rewardDecimals = 18;
+        try {
+            rewardDecimals = await rewardContract.decimals();
+        } catch (e) {
+            console.warn(`Could not fetch reward token decimals for ${rewardToken}: ${e.message}. Defaulting to 18.`);
+        }
+        const totalRewards = ethers.parseUnits(inputs.totalRewards.value, rewardDecimals);
+        // --- END NEW ---
         const poolName = inputs.poolName.value;
         const poolImage = inputs.poolImage.files[0];
 
@@ -860,7 +1010,7 @@ async function deployPool() {
             throw new Error("Pool name is required");
         }
 
-        const rewardContract = new ethers.Contract(rewardToken, erc20ABI, signer);
+        // allowance and approve use rewardContract (already created)
         const rewardAllowance = await rewardContract.allowance(account, factoryContract.target);
         if (rewardAllowance < totalRewards) {
             const approveRewardGas = await rewardContract.approve.estimateGas(factoryContract.target, totalRewards);
@@ -1026,10 +1176,7 @@ async function stakeNFTs() {
         const isERC721 = await nftContract.supportsInterface("0x80ac58cd");
         if (!isERC721) throw new Error(`NFT contract at ${nftAddr} is not ERC-721 compliant`);
 
-        const checkboxes = document.getElementsByClassName("nft-checkbox");
-        const tokenIds = Array.from(checkboxes)
-            .filter(cb => cb.checked)
-            .map(cb => ethers.toBigInt(cb.dataset.id));
+        const tokenIds = Array.from(selectedStakeNFTs);
         if (tokenIds.length === 0) throw new Error("No NFTs selected");
         console.log(`Selected token IDs: ${tokenIds}`);
 
@@ -1065,10 +1212,7 @@ async function unstakeNFTs() {
         if (!poolAddr) throw new Error("No pool selected");
         const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
 
-        const checkboxes = document.getElementsByClassName("staked-nft-checkbox");
-        const tokenIds = Array.from(checkboxes)
-            .filter(cb => cb.checked)
-            .map(cb => ethers.toBigInt(cb.dataset.id));
+        const tokenIds = Array.from(selectedUnstakeNFTs);
         if (tokenIds.length === 0) throw new Error("No NFTs selected");
 
         const txFee = await poolContract.txFee();
@@ -1115,6 +1259,118 @@ async function claimRewards() {
     }
 }
 
+async function claimAllRewards(event) {
+    const claimStatus = document.getElementById("claimStatus");
+    if (claimStatus) claimStatus.innerText = "";
+    try {
+        const poolAddr = document.getElementById("selectedPool")?.value;
+        if (!poolAddr) throw new Error("No pool selected");
+
+        if (!signer) throw new Error("Wallet not connected");
+
+        // Ensure contract is connected with signer so estimateGas / send works
+        const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
+
+        // Defensive: check account
+        if (!account) {
+            const addr = await signer.getAddress().catch(() => null);
+            account = addr || account;
+        }
+        if (!account) throw new Error("No account available");
+
+        // Get the user's staked tokens (normalize to plain strings)
+        let stakedRaw = [];
+        try {
+            stakedRaw = await poolContract.getUserStakedTokens(account);
+        } catch (e) {
+            console.warn("getUserStakedTokens failed:", e);
+            stakedRaw = [];
+        }
+        const staked = Array.isArray(stakedRaw) ? stakedRaw.map(id => id.toString()) : [];
+
+        if (!staked || staked.length === 0) throw new Error("No staked NFTs to claim for");
+
+        // Get tx fee and check caller balance
+        const txFee = await poolContract.txFee();
+        const balance = await provider.getBalance(account);
+        if (balance < txFee) throw new Error(`Insufficient balance for tx fee: ${ethers.formatEther(txFee)} required`);
+
+        // Check pool has enough reward tokens to cover the claim to avoid revert
+        const rewardTokenAddr = await poolContract.rewardToken();
+        const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, provider);
+        let totalReward = 0n;
+        try {
+            for (const tid of staked) {
+                const r = await poolContract.nftRewards(tid);
+                totalReward += BigInt(r.toString());
+            }
+        } catch (e) {
+            console.warn("Failed to sum nftRewards, continuing:", e);
+        }
+        try {
+            const poolRewardBalance = BigInt((await rewardContract.balanceOf(poolAddr)).toString());
+            if (totalReward > 0n && poolRewardBalance < totalReward) {
+                throw new Error("Pool has insufficient reward balance to satisfy claim");
+            }
+        } catch (e) {
+            // If decimals/reads fail, just warn and continue — the contract will revert if insufficient
+            console.warn("Could not validate pool reward balance:", e);
+        }
+
+        // Determine and call the proper claim function (always include txFee)
+        if (typeof poolContract.claim === "function") {
+            const args = staked;
+            const gasEstimate = await poolContract.claim.estimateGas(args, { value: txFee });
+            const tx = await poolContract.claim(args, { value: txFee, gasLimit: gasEstimate * 12n / 10n });
+            claimStatus && (claimStatus.innerText = "Claiming rewards...");
+            await tx.wait();
+            claimStatus && (claimStatus.innerText = "Claim complete");
+            await loadNFTs();
+            return;
+        }
+
+        if (typeof poolContract.claimAll === "function") {
+            const gasEstimate = await poolContract.claimAll.estimateGas({ value: txFee });
+            const tx = await poolContract.claimAll({ value: txFee, gasLimit: gasEstimate * 12n / 10n });
+            claimStatus && (claimStatus.innerText = "Claiming rewards...");
+            await tx.wait();
+            claimStatus && (claimStatus.innerText = "Claim complete");
+            await loadNFTs();
+            return;
+        }
+
+        if (typeof poolContract.claimRewards === "function") {
+            // some implementations accept tokenIds or no args
+            if (staked.length > 0) {
+                const gasEstimate = await poolContract.claimRewards.estimateGas(staked, { value: txFee });
+                const tx = await poolContract.claimRewards(staked, { value: txFee, gasLimit: gasEstimate * 12n / 10n });
+                claimStatus && (claimStatus.innerText = "Claiming rewards...");
+                await tx.wait();
+                claimStatus && (claimStatus.innerText = "Claim complete");
+                await loadNFTs();
+                return;
+            } else {
+                const gasEstimate = await poolContract.claimRewards.estimateGas({ value: txFee });
+                const tx = await poolContract.claimRewards({ value: txFee, gasLimit: gasEstimate * 12n / 10n });
+                claimStatus && (claimStatus.innerText = "Claiming rewards...");
+                await tx.wait();
+                claimStatus && (claimStatus.innerText = "Claim complete");
+                await loadNFTs();
+                return;
+            }
+        }
+
+        throw new Error("No claim function found on pool contract (check ABI)");
+    } catch (error) {
+        console.error("Claim all rewards error:", error);
+        if (document.getElementById("claimStatus")) {
+            document.getElementById("claimStatus").innerText = `Error: ${error.message}`;
+        } else {
+            alert(`Claim Error: ${error.message}`);
+        }
+    }
+}
+
 async function stakeBonusNFTs() {
     const stakeStatus = document.getElementById("stakeStatus");
     if (!stakeStatus) return;
@@ -1133,10 +1389,7 @@ async function stakeBonusNFTs() {
         if (Number(startTime) > now) throw new Error(`Pool not started: starts at ${new Date(Number(startTime) * 1000).toLocaleString()}`);
         if (Number(endTime) <= now) throw new Error(`Pool has ended: ended at ${new Date(Number(endTime) * 1000).toLocaleString()}`);
 
-        const checkboxes = document.getElementsByClassName("bonus-nft-checkbox");
-        const tokenIds = Array.from(checkboxes)
-            .filter(cb => cb.checked)
-            .map(cb => ethers.toBigInt(cb.dataset.id));
+        const tokenIds = Array.from(selectedStakeBonusNFTs);
         if (tokenIds.length === 0) throw new Error("No bonus NFTs selected");
 
         const stakedBonusTokens = await poolContract.getUserBonusStakedTokens(account);
@@ -1204,7 +1457,16 @@ async function addRewards() {
         const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
         const rewardTokenAddr = await poolContract.rewardToken();
         const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, signer);
-        const amount = ethers.parseUnits(amountInput.value, 18);
+
+        // --- NEW: use reward token decimals when parsing amount ---
+        let rewardDecimals = 18;
+        try {
+            rewardDecimals = await rewardContract.decimals();
+        } catch (e) {
+            console.warn(`Could not read reward token decimals for ${rewardTokenAddr}: ${e.message}. Defaulting to 18.`);
+        }
+        const amount = ethers.parseUnits(amountInput.value, rewardDecimals);
+        // --- END NEW ---
 
         const allowance = await rewardContract.allowance(account, poolAddr);
         if (allowance < amount) {
@@ -1237,7 +1499,18 @@ async function withdrawExcessRewards() {
         const amountInput = document.getElementById("withdrawExcessAmount");
         if (!poolAddr || !amountInput) throw new Error("Pool or amount input not found");
         const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
-        const amount = ethers.parseUnits(amountInput.value, 18);
+
+        // --- NEW: use reward token decimals when parsing withdraw amount ---
+        const rewardTokenAddr = await poolContract.rewardToken();
+        const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, signer);
+        let rewardDecimals = 18;
+        try {
+            rewardDecimals = await rewardContract.decimals();
+        } catch (e) {
+            console.warn(`Could not read reward token decimals for ${rewardTokenAddr}: ${e.message}. Defaulting to 18.`);
+        }
+        const amount = ethers.parseUnits(amountInput.value, rewardDecimals);
+        // --- END NEW ---
 
         const txFee = await poolContract.txFee();
         const balance = await provider.getBalance(account);
@@ -1271,7 +1544,7 @@ async function setEndTime() {
 
         const gasEstimate = await poolContract.setEndTime.estimateGas(newEnd, { value: txFee });
         const tx = await poolContract.setEndTime(newEnd, { value: txFee, gasLimit: gasEstimate * 12n / 10n });
-        await tx.wait();
+                      await tx.wait();
         displaySuccess("manageStatus", "End time updated successfully!");
         await loadPools();
     } catch (error) {
@@ -1406,6 +1679,7 @@ async function setRewardToken() {
         const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
 
         const txFee = await poolContract.txFee();
+       
         const balance = await provider.getBalance(account);
         if (balance < txFee) throw new Error(`Insufficient balance for tx fee: ${ethers.formatEther(txFee)} ${selectedNetwork === 'cronos' ? 'CRO' : 'MATIC'} required`);
 
@@ -1417,6 +1691,68 @@ async function setRewardToken() {
     } catch (error) {
         console.error('Set reward token error:', error);
         displayError("manageStatus", `Error setting pool reward token address: ${error.message}`);
+    }
+}
+
+document.addEventListener("change", (event) => {
+    // For staking NFTs
+    if (event.target.classList.contains("nft-checkbox")) {
+        const tokenId = event.target.dataset.id;
+        if (event.target.checked) {
+            selectedStakeNFTs.add(tokenId);
+        } else {
+            selectedStakeNFTs.delete(tokenId);
+        }
+    }
+    // For unstaking NFTs
+    if (event.target.classList.contains("staked-nft-checkbox")) {
+        const tokenId = event.target.dataset.id;
+        if (event.target.checked) {
+            selectedUnstakeNFTs.add(tokenId);
+        } else {
+            selectedUnstakeNFTs.delete(tokenId);
+        }
+    }
+    // For bonus NFTs
+    if (event.target.classList.contains("bonus-nft-checkbox")) {
+        const tokenId = event.target.dataset.id;
+        if (event.target.checked) {
+            selectedStakeBonusNFTs.add(tokenId);
+        } else {
+            selectedStakeBonusNFTs.delete(tokenId);
+        }
+    }
+    if (event.target.classList.contains("staked-bonus-nft-checkbox")) {
+        const tokenId = event.target.dataset.id;
+        if (event.target.checked) {
+            selectedUnstakeNFTs.add(tokenId);
+        } else {
+            selectedUnstakeNFTs.delete(tokenId);
+        }
+    }
+});
+
+async function setPoolName() {
+    const manageStatus = document.getElementById("manageStatus");
+    if (!manageStatus) return;
+    try {
+        const poolAddr = document.getElementById("managePool")?.value;
+        const newName = document.getElementById("newPoolName")?.value;
+       
+        if (!poolAddr || !newName) throw new Error("No pool or new name provided");
+        const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
+
+        const txFee = await poolContract.txFee();
+        const balance = await provider.getBalance(account);
+        if (balance < txFee) throw new Error(`Insufficient balance for tx fee`);
+
+        const gasEstimate = await poolContract.setPoolName.estimateGas(newName, { value: txFee });
+        const tx = await poolContract.setPoolName(newName, { value: txFee, gasLimit: gasEstimate * 12n / 10n });
+        await tx.wait();
+        displaySuccess("manageStatus", "Pool name updated successfully!");
+        await loadPools();
+    } catch (error) {
+        displayError("manageStatus", `Error setting pool name: ${error.message}`);
     }
 }
 
@@ -1432,6 +1768,23 @@ function selectAllNFTs(checkboxClass, checked) {
     const checkboxes = document.getElementsByClassName(checkboxClass);
     for (const checkbox of checkboxes) {
         checkbox.checked = checked;
+        const tokenId = checkbox.dataset.id;
+        if (checkboxClass === "nft-checkbox") {
+            if (checked) selectedStakeNFTs.add(tokenId);
+            else selectedStakeNFTs.delete(tokenId);
+        }
+        if (checkboxClass === "staked-nft-checkbox") {
+            if (checked) selectedUnstakeNFTs.add(tokenId);
+            else selectedUnstakeNFTs.delete(tokenId);
+        }
+        if (checkboxClass === "bonus-nft-checkbox") {
+            if (checked) selectedStakeBonusNFTs.add(tokenId);
+            else selectedStakeBonusNFTs.delete(tokenId);
+        }
+        if (checkboxClass === "staked-bonus-nft-checkbox") {
+            if (checked) selectedUnstakeNFTs.add(tokenId);
+            else selectedUnstakeNFTs.delete(tokenId);
+        }
     }
 }
 
@@ -1457,6 +1810,9 @@ document.addEventListener("DOMContentLoaded", () => {
             button.innerText = selected ? "Unselect All" : "Select All";
         });
     }
+
+    const setPoolNameButton = document.getElementById("setPoolName");
+    if (setPoolNameButton) setPoolNameButton.addEventListener("click", setPoolName);
 
     const connectButton = document.getElementById("connectWallet");
     if (connectButton) connectButton.addEventListener("click", connectWallet);
@@ -1487,6 +1843,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const claimButton = document.getElementById("claimRewards");
     if (claimButton) claimButton.addEventListener("click", claimRewards);
+
+    const claimAllButton = document.getElementById("claimAllRewards");
+if (claimAllButton) claimAllButton.addEventListener("click", claimAllRewards);
 
     const setEndTimeButton = document.getElementById("setEndTime");
     if (setEndTimeButton) setEndTimeButton.addEventListener("click", setEndTime);
@@ -1626,4 +1985,149 @@ async function getIpfsImageUrl(ipfsUri) {
     }
     // Fallback to first gateway
     return ipfsGateways[0] + cid;
+}
+
+// --- NEW: inspectPoolSafe function ---
+async function inspectPoolSafe(poolAddr, accountAddr) {
+    try {
+        if (!provider) throw new Error("Provider not initialized (connect wallet first).");
+        if (!poolAddr) throw new Error("No pool address provided.");
+        poolAddr = String(poolAddr).trim().replace(/^<|>$/g, "");
+        accountAddr = accountAddr ? String(accountAddr).trim().replace(/^<|>$/g, "") : account;
+        try { poolAddr = ethers.getAddress(poolAddr); } catch (e) { throw new Error("Invalid pool address: " + poolAddr); }
+        try { accountAddr = ethers.getAddress(accountAddr); } catch (e) { throw new Error("Invalid account address: " + accountAddr); }
+
+        const pool = new ethers.Contract(poolAddr, poolABI, provider);
+
+        // Reward token + decimals
+        const rewardAddr = await pool.rewardToken();
+        const reward = new ethers.Contract(rewardAddr, erc20ABI, provider);
+        const decimals = Number(await reward.decimals().catch(()=>18));
+        const totalRewards = await pool.totalRewards();
+        const poolBalance = await reward.balanceOf(poolAddr);
+
+        // Try several possible names for a "total staked" getter (frontend-friendly)
+        const totalCandidates = ['totalNFTsStaked','totalStaked','totalSupply','totalStakedNFTs','totalStakedTokens','totalNftStaked','totalTokensStaked'];
+        let totalNFTs = null;
+        let usedTotalFn = null;
+        for (const fn of totalCandidates) {
+            if (typeof pool[fn] === 'function') {
+                try {
+                    totalNFTs = await pool[fn]();
+                    usedTotalFn = fn;
+                    break;
+                } catch (e) {
+                    console.warn(`Found ${fn} but call failed: ${e.message}`);
+                }
+            }
+        }
+        if (usedTotalFn) {
+            console.log(`Using ${usedTotalFn}() => ${totalNFTs.toString()}`);
+        } else {
+            console.log("No total-staked getter found on pool contract (skipping totalNFTsStaked).");
+        }
+
+        console.log("reward token:", rewardAddr);
+        console.log("decimals:", decimals);
+        console.log("totalRewards raw:", totalRewards.toString(), "formatted:", ethers.formatUnits(totalRewards, decimals));
+        console.log("poolBalance raw:", poolBalance.toString(), "formatted:", ethers.formatUnits(poolBalance, decimals));
+        console.log("totalNFTsStaked (detected):", totalNFTs ? totalNFTs.toString() : "n/a");
+
+        // staked tokens for account
+        const staked = (typeof pool.getUserStakedTokens === 'function')
+            ? await pool.getUserStakedTokens(accountAddr).catch(()=>[])
+            : [];
+        console.log("staked tokens for account:", Array.isArray(staked) ? staked.map(x=>x.toString()) : staked);
+
+        let sum = 0n;
+        if (Array.isArray(staked) && staked.length > 0) {
+            for (const t of staked) {
+                const r = await pool.nftRewards(t);
+                console.log("nftRewards", t.toString(), "raw:", r.toString(), "formatted:", r ? ethers.formatUnits(r, decimals) : null);
+                sum += BigInt(r.toString());
+            }
+        } else {
+            console.log("No staked tokens returned or getUserStakedTokens not present.");
+        }
+        console.log("sum of nftRewards raw:", sum.toString(), "formatted:", ethers.formatUnits(sum.toString(), decimals));
+
+        // expected distributed so far (if start/end exist)
+        if (typeof pool.startTime === "function" && typeof pool.endTime === "function") {
+            const start = Number(await pool.startTime());
+            const end = Number(await pool.endTime());
+            const now = Math.min(Math.floor(Date.now()/1000), end);
+            const elapsed = Math.max(0, now - start);
+            const duration = end - start;
+            if (duration > 0) {
+                const expectedDistributed = BigInt(totalRewards.toString()) * BigInt(elapsed) / BigInt(duration);
+                console.log("expectedDistributed raw:", expectedDistributed.toString(), "formatted:", ethers.formatUnits(expectedDistributed.toString(), decimals));
+            }
+        }
+    } catch (err) {
+        console.error("inspectPoolSafe error:", err.message || err);
+    }
+}
+// ...existing code...
+async function debugTokenRewards(poolAddr, tokenId, accountAddr) {
+    try {
+        if (!provider) throw new Error("Provider not initialized (connect wallet first).");
+        poolAddr = String(poolAddr).trim().replace(/^<|>$/g,"");
+        tokenId = String(tokenId).trim();
+        accountAddr = accountAddr ? String(accountAddr).trim().replace(/^<|>$/g,"") : account;
+        poolAddr = ethers.getAddress(poolAddr);
+        accountAddr = ethers.getAddress(accountAddr);
+
+        const pool = new ethers.Contract(poolAddr, poolABI, provider);
+        const rewardAddr = await (typeof pool.rewardToken === 'function' ? pool.rewardToken() : Promise.resolve(null));
+        if (!rewardAddr) throw new Error("Could not read rewardToken from pool");
+        const reward = new ethers.Contract(rewardAddr, erc20ABI, provider);
+        const decimals = Number(await reward.decimals().catch(()=>18));
+
+        // Defensive calls: only call view methods if they exist on the contract object
+        const safeCall = async (contract, fnName, ...args) => {
+            try {
+                if (typeof contract[fnName] === 'function') {
+                    return await contract[fnName](...args);
+                }
+            } catch (e) {
+                console.warn(`Call ${fnName} failed: ${e.message}`);
+            }
+            return null;
+        };
+
+        const rpStored = await safeCall(pool, 'rewardPerTokenStored');
+        const rptNow = await safeCall(pool, 'rewardPerToken');
+        const lastUpdate = await safeCall(pool, 'lastUpdateTime');
+        const totalNFTs = await safeCall(pool, 'totalNFTsStaked');
+        const totalRewards = await safeCall(pool, 'totalRewards');
+        const poolBal = await reward.balanceOf(poolAddr).catch(()=>null);
+        const nftPaid = await safeCall(pool, 'nftRewardPerTokenPaid', tokenId);
+        const nftReward = await safeCall(pool, 'nftRewards', tokenId);
+        const multiplier = await safeCall(pool, 'getNFTMultiplier', accountAddr);
+        const start = await safeCall(pool, 'startTime');
+        const end = await safeCall(pool, 'endTime');
+
+        console.log("==== DEBUG token rewards ====");
+        console.log("pool:", poolAddr);
+        console.log("tokenId:", tokenId);
+        console.log("reward token:", rewardAddr, "decimals:", decimals);
+        console.log("startTime:", start && Number(start), "endTime:", end && Number(end));
+        console.log("lastUpdateTime:", lastUpdate && Number(lastUpdate));
+        console.log("rewardPerTokenStored (raw):", rpStored && rpStored.toString());
+        console.log("rewardPerToken() (raw):", rptNow && rptNow.toString());
+        console.log("nftRewardPerTokenPaid[token] raw:", nftPaid && nftPaid.toString());
+        console.log("nftRewards[token] raw:", nftReward && nftReward.toString(), "formatted:", nftReward ? ethers.formatUnits(nftReward, decimals) : null);
+        console.log("getNFTMultiplier(account) raw:", multiplier && multiplier.toString());
+        console.log("totalRewards raw:", totalRewards && totalRewards.toString(), "formatted:", totalRewards ? ethers.formatUnits(totalRewards, decimals) : null);
+        console.log("pool token balance raw:", poolBal && poolBal.toString(), "formatted:", poolBal ? ethers.formatUnits(poolBal, decimals) : null);
+        console.log("totalNFTsStaked (detected):", totalNFTs ? totalNFTs.toString() : "n/a");
+        console.log("rewardPerToken() formatted (divide by 1e18 for human):", rptNow ? (Number(rptNow.toString()) / 1e18) : null);
+        console.log("==== end debug ====");
+        return {
+            rpStored, rptNow, lastUpdate, totalNFTs, totalRewards, poolBal, nftPaid, nftReward, multiplier, start, end
+        };
+    } catch (err) {
+        console.error("debugTokenRewards error:", err.message || err);
+        throw err;
+    }
 }
