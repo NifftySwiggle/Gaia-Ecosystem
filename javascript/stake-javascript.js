@@ -15,7 +15,7 @@ window.addEventListener('scroll', () => {
 const networkConfig = {
     cronos: {
         chainId: '0x19',
-        factoryAddress: "0x72fA6FfE1DD89D454C37641A02df568f91AdCaA8",
+        factoryAddress: "0x757a1338117eb12273bf97e07D0344Fd073F89b7",
         rpcUrl: "https://evm.cronos.org",
         usdcAddress: "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59"
     },
@@ -2131,3 +2131,4 @@ async function debugTokenRewards(poolAddr, tokenId, accountAddr) {
         throw err;
     }
 }
+
