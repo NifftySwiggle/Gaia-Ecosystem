@@ -15,13 +15,13 @@ window.addEventListener('scroll', () => {
 const networkConfig = {
     cronos: {
         chainId: '0x19',
-        factoryAddress: "0x757a1338117eb12273bf97e07D0344Fd073F89b7",
+        factoryAddress: "0x5F40F8C54a09BEB0a75cCB61b829513D6b151927",
         rpcUrl: "https://evm.cronos.org",
         usdcAddress: "0xc21223249CA28397B4B6541dfFaEcC539BfF0c59"
     },
     polygon: {
         chainId: '0x89',
-        factoryAddress: "0x354b39c945d5aaf5C6cF64466a5C5e7860D5679d",
+        factoryAddress: "0x6f147D79bD0886eCcaF79fCBC920d16e65035A3b",
         rpcUrl: "https://polygon-rpc.com",
         usdcAddress: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
     }
@@ -735,7 +735,7 @@ async function loadNFTs() {
             }
 
             if (!enumerableSupported) {
-                let maxTokenId = 10000n;
+                let maxTokenId = 10002n;
                 try {
                     maxTokenId = await nftContract.totalSupply();
                 } catch (e) {
@@ -1210,11 +1210,10 @@ async function unstakeNFTs() {
     if (!stakeStatus) return;
     try {
         const poolAddr = document.getElementById("selectedPool")?.value;
-        if (!poolAddr) throw new Error("No pool selected");
-        const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
-
         const tokenIds = Array.from(selectedUnstakeNFTs);
         if (tokenIds.length === 0) throw new Error("No NFTs selected");
+        if (!poolAddr) throw new Error("No pool selected");
+        const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
 
         const txFee = await poolContract.txFee();
         const balance = await provider.getBalance(account);
@@ -1424,14 +1423,13 @@ async function unstakeBonusNFTs() {
     if (!stakeStatus) return;
     try {
         const poolAddr = document.getElementById("selectedPool")?.value;
-        if (!poolAddr) throw new Error("No pool selected");
-        const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
-
         const checkboxes = document.getElementsByClassName("staked-bonus-nft-checkbox");
         const tokenIds = Array.from(checkboxes)
             .filter(cb => cb.checked)
             .map(cb => ethers.toBigInt(cb.dataset.id));
         if (tokenIds.length === 0) throw new Error("No bonus NFTs selected");
+        if (!poolAddr) throw new Error("No pool selected");
+        const poolContract = new ethers.Contract(poolAddr, poolABI, signer);
 
         const txFee = await poolContract.txFee();
         const balance = await provider.getBalance(account);
@@ -1845,7 +1843,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (claimButton) claimButton.addEventListener("click", claimRewards);
 
     const claimAllButton = document.getElementById("claimAllRewards");
-if (claimAllButton) claimAllButton.addEventListener("click", claimAllRewards);
+    if (claimAllButton) claimAllButton.addEventListener("click", claimAllRewards);
 
     const setEndTimeButton = document.getElementById("setEndTime");
     if (setEndTimeButton) setEndTimeButton.addEventListener("click", setEndTime);
@@ -2131,4 +2129,3 @@ async function debugTokenRewards(poolAddr, tokenId, accountAddr) {
         throw err;
     }
 }
-
