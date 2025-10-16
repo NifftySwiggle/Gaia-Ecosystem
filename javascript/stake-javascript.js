@@ -715,9 +715,11 @@ async function loadNFTs() {
             elements.nfts.innerHTML = `<p>No NFTs owned for contract ${nftAddr}</p>`;
             elements.stakeNFTs.disabled = true;
         } else {
-            let enumerableSupported = true;
+            // Immediately try enumeration for just the first token
+            let enumerableSupported = false;
             try {
                 await nftContract.tokenOfOwnerByIndex(account, 0);
+                enumerableSupported = true;
             } catch (e) {
                 enumerableSupported = false;
             }
@@ -729,17 +731,19 @@ async function loadNFTs() {
                         nfts.push({ id: tokenId });
                     }
                 } catch (e) {
-                    elements.nftStatus.innerHTML += `<p class="warning">Failed to enumerate NFTs: ${e.message}. Attempting fallback method.</p>`;
+                    // If enumeration fails, skip further attempts and go straight to fallback
+                    elements.nftStatus.innerHTML += `<p class="warning">Enumeration failed. Using fallback scan.</p>`;
                     enumerableSupported = false;
                 }
             }
 
             if (!enumerableSupported) {
-                let maxTokenId = 10002n;
+                // Fallback: scan up to maxTokenId (default 20002, or use totalSupply if available)
+                let maxTokenId = 20002n;
                 try {
                     maxTokenId = await nftContract.totalSupply();
                 } catch (e) {
-                    elements.nftStatus.innerHTML += `<p class="warning">Warning: totalSupply not supported. Scanning up to token ID 9999.</p>`;
+                    elements.nftStatus.innerHTML += `<p class="warning">Warning: totalSupply not supported. Scanning up to token ID 19999.</p>`;
                 }
                 const batchSize = 50;
                 const tokenIds = Array.from({ length: Number(maxTokenId) }, (_, i) => BigInt(i));
@@ -877,7 +881,7 @@ async function loadNFTs() {
                 elements.stakeBonusNFTs.disabled = true;
                 return;
             }
-            let bonusMaxTokenId = 10000n;
+            let bonusMaxTokenId = 20002n;
 
             if (bonusBalance == 0n) {
                 elements.bonusNfts.innerHTML = `<p class="error">No bonus NFTs owned for contract ${bonusAddr} (scanned up to token ID ${bonusMaxTokenId - 1n})</p>`;
@@ -1913,12 +1917,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const toggleButtons = [
-        { id: "toggleDeploy", section: "deployContent" },
-        { id: "toggleStake", section: "stakeContent" },
-        { id: "toggleUnstake", section: "unstakeContent" },
-        { id: "toggleManage", section: "manageContent" },
-        { id: "toggleAdmin", section: "adminContent" },
-        { id: "toggleEndedPools", section: "endedPoolsContent" }
+        { id: "toggleDeploySection", section: "deployContent" },
+        { id: "toggleStakeSection", section: "stakeContent" },
+        { id: "toggleUnstakeSection", section: "unstakeContent" },
+        { id: "toggleManageSection", section: "manageContent" },
+        { id: "toggleAdminSection", section: "adminContent" },
+        { id: "toggleEndedPools", section: "endedPoolsContent" },
+        { id: "toggleAvailablePools", section: "poolsContent" },
+        { id: "toggleMyPools", section: "myPoolsContent" }
     ];
     toggleButtons.forEach(({ id, section }) => {
         const button = document.getElementById(id);
