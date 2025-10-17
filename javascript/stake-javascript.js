@@ -439,9 +439,23 @@ async function loadPools() {
     const manageSelect = document.getElementById("managePool");
     if (!poolsDiv || !endedPoolsDiv || !select || !manageSelect) {
         console.warn("One or more pool display elements not found");
+        poolsLoading = false;
         return;
     }
     try {
+        // --- NEW: fetch and display factory openFee for everyone (formatted with USDC decimals) ---
+        try {
+            const usdcDecimals = await getUsdcDecimals();
+            const openFee = await factoryContract.openFee();
+            const openFeeEl = document.getElementById("openFeeDisplay");
+            if (openFeeEl) {
+                openFeeEl.innerText = `Pool Open Fee: ${ethers.formatUnits(openFee, usdcDecimals)} USDC`;
+            }
+        } catch (feeErr) {
+            console.warn("Could not read factory openFee:", feeErr);
+            // Keep existing/static text if reading fails
+        }
+
         const pools = await factoryContract.getPools();
         poolsDiv.innerHTML = pools.length === 0 ? "<p>No active pools available</p>" : "";
         endedPoolsDiv.innerHTML = "";
@@ -577,7 +591,13 @@ const selectedStakeBonusNFTs = new Set();
 
 let stakePage = 0;
 let unstakePage = 0;
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 10;
+
+// Add globals to hold full ID lists for select-all across pages
+let allUnstakedIds = [];
+let allStakedIds = [];
+let allBonusUnstakedIds = [];
+let allStakedBonusIds = [];
 
 // Helper to render paginated NFTs
 function renderNFTPage(nfts, container, page, selectedSet, checkboxClass, type) {
@@ -586,22 +606,48 @@ function renderNFTPage(nfts, container, page, selectedSet, checkboxClass, type) 
     const end = Math.min(start + PAGE_SIZE, nfts.length);
     for (let i = start; i < end; i++) {
         const nft = nfts[i];
+        const idStr = String(nft.id);
         container.innerHTML += `
             <div class="nft-item">
-                <input type="checkbox" class="${checkboxClass}" data-id="${nft.id}" ${selectedSet.has(nft.id) ? "checked" : ""}>
-                <p>Token ID: ${nft.id}</p>
+                <input type="checkbox" class="${checkboxClass}" data-id="${idStr}" ${selectedSet.has(idStr) ? "checked" : ""}>
+                <p>Token ID: ${idStr}</p>
             </div>`;
     }
-    // Pagination controls
+    const totalPages = Math.max(1, Math.ceil(nfts.length / PAGE_SIZE));
     container.innerHTML += `
         <div style="margin-top:10px;">
             <button id="${type}PrevPage" class="button" ${page === 0 ? "disabled" : ""}>Previous</button>
-            <span> Page ${page + 1} / ${Math.ceil(nfts.length / PAGE_SIZE)} </span>
+            <span> Page ${page + 1} / ${totalPages} </span>
             <button id="${type}NextPage" class="button" ${end >= nfts.length ? "disabled" : ""}>Next</button>
-        </div>
-        <button id="${type}SelectAll" class="button">Select All</button>
-        <button id="${type}UnselectAll" class="button">Unselect All</button>
-    `;
+        </div>`;
+
+    // Attach listeners to the buttons on every render so they persist across re-renders
+    const prevBtn = container.querySelector(`#${type}PrevPage`);
+    const nextBtn = container.querySelector(`#${type}NextPage`);
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            if (type === 'stake') {
+                stakePage = Math.max(0, stakePage - 1);
+                renderNFTPage(nfts, container, stakePage, selectedSet, checkboxClass, type);
+            } else if (type === 'unstake') {
+                unstakePage = Math.max(0, unstakePage - 1);
+                renderNFTPage(nfts, container, unstakePage, selectedSet, checkboxClass, type);
+            }
+        });
+    }
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            if (type === 'stake') {
+                const maxPage = Math.max(0, Math.ceil(nfts.length / PAGE_SIZE) - 1);
+                stakePage = Math.min(maxPage, stakePage + 1);
+                renderNFTPage(nfts, container, stakePage, selectedSet, checkboxClass, type);
+            } else if (type === 'unstake') {
+                const maxPage = Math.max(0, Math.ceil(nfts.length / PAGE_SIZE) - 1);
+                unstakePage = Math.min(maxPage, unstakePage + 1);
+                renderNFTPage(nfts, container, unstakePage, selectedSet, checkboxClass, type);
+            }
+        });
+    }
 }
 
 // Update loadNFTs to use pagination and global selection
@@ -784,29 +830,36 @@ async function loadNFTs() {
         // Filter out staked NFTs from the list of owned NFTs
         const unstakedNFTs = nfts.filter(nft => !stakedTokens.includes(nft.id));
 
-        // Display only unstaked NFTs in the stake section
-        elements.nfts.innerHTML = "";
-        for (const nft of unstakedNFTs) {
-            elements.nfts.innerHTML += `
-        <div class="nft-item">
-            <input type="checkbox" class="nft-checkbox" data-id="${nft.id}">
-            <p>Token ID: ${nft.id}</p>
-        </div>`;
-        }
-        elements.stakeNFTs.disabled = unstakedNFTs.length === 0;
+        // Display only unstaked NFTs in the stake section (paginated)
+        const unstakedNFTObjs = unstakedNFTs.map(n => ({ id: n.id }));
+        
+        // *** set globals so Select All applies to all pages ***
+        allUnstakedIds = unstakedNFTObjs.map(n => String(n.id));
+        // Wire stake pagination/render
+        renderNFTPage(unstakedNFTObjs, elements.nfts, stakePage, selectedStakeNFTs, "nft-checkbox", "stake");
+        elements.stakeNFTs.disabled = unstakedNFTObjs.length === 0;
 
-        // Display staked NFTs in the unstake section
-        elements.stakedNFTs.innerHTML = "";
-        for (const tokenId of stakedTokens) {
-            elements.stakedNFTs.innerHTML += `
-        <div class="nft-item">
-            <input type="checkbox" class="staked-nft-checkbox" data-id="${tokenId}">
-            <p>Token ID: ${tokenId}</p>
-        </div>`;
-        }
+        // Wire stake pagination buttons (these are still fine to leave but primary wiring is inside renderNFTPage)
+        const stakePrev = document.getElementById("stakePrevPage");
+        const stakeNext = document.getElementById("stakeNextPage");
+        if (stakePrev) stakePrev.onclick = () => { stakePage = Math.max(0, stakePage - 1); renderNFTPage(unstakedNFTObjs, elements.nfts, stakePage, selectedStakeNFTs, "nft-checkbox", "stake"); };
+        if (stakeNext) stakeNext.onclick = () => { stakePage = Math.min(Math.ceil(unstakedNFTObjs.length / PAGE_SIZE) - 1, stakePage + 1); renderNFTPage(unstakedNFTObjs, elements.nfts, stakePage, selectedStakeNFTs, "nft-checkbox", "stake"); };
+
+        // Display staked NFTs in the unstake section (paginated)
+        const stakedObjs = stakedTokens.map(id => ({ id }));
+        // set global list for select-all across pages
+        allStakedIds = stakedObjs.map(n => String(n.id));
+        renderNFTPage(stakedObjs, elements.stakedNFTs, unstakePage, selectedUnstakeNFTs, "staked-nft-checkbox", "unstake");
         const unstakeNFTs = document.getElementById("unstakeNFTs");
-        if (unstakeNFTs) unstakeNFTs.disabled = stakedTokens.length === 0;
-        elements.claimRewards.disabled = stakedTokens.length === 0;
+        if (unstakeNFTs) unstakeNFTs.disabled = stakedObjs.length === 0;
+        elements.claimRewards.disabled = stakedObjs.length === 0;
+
+        // Wire unstake pagination buttons (primary wiring handled in renderNFTPage)
+        const unstakePrev = document.getElementById("unstakePrevPage");
+        const unstakeNext = document.getElementById("unstakeNextPage");
+        if (unstakePrev) unstakePrev.onclick = () => { unstakePage = Math.max(0, unstakePage - 1); renderNFTPage(stakedObjs, elements.stakedNFTs, unstakePage, selectedUnstakeNFTs, "staked-nft-checkbox", "unstake"); };
+        if (unstakeNext) unstakeNext.onclick = () => { unstakePage = Math.min(Math.ceil(stakedObjs.length / PAGE_SIZE) - 1, unstakePage + 1); renderNFTPage(stakedObjs, elements.stakedNFTs, unstakePage, selectedUnstakeNFTs, "staked-nft-checkbox", "unstake"); };
+
 
         // Calculate pending rewards using contract's earned() if available, else manual per-token calc
         try {
@@ -1767,25 +1820,51 @@ function toggleSection(sectionId, toggleId) {
 }
 
 function selectAllNFTs(checkboxClass, checked) {
+    // Update visible checkboxes as before
     const checkboxes = document.getElementsByClassName(checkboxClass);
     for (const checkbox of checkboxes) {
         checkbox.checked = checked;
-        const tokenId = checkbox.dataset.id;
-        if (checkboxClass === "nft-checkbox") {
-            if (checked) selectedStakeNFTs.add(tokenId);
-            else selectedStakeNFTs.delete(tokenId);
+    }
+
+    // Determine source list and target selected set to update all pages
+    let sourceIds = null;
+    let targetSet = null;
+    if (checkboxClass === "nft-checkbox") {
+        sourceIds = allUnstakedIds;
+        targetSet = selectedStakeNFTs;
+    } else if (checkboxClass === "staked-nft-checkbox") {
+        sourceIds = allStakedIds;
+        targetSet = selectedUnstakeNFTs;
+    } else if (checkboxClass === "bonus-nft-checkbox") {
+        sourceIds = allBonusUnstakedIds;
+        targetSet = selectedStakeBonusNFTs;
+    } else if (checkboxClass === "staked-bonus-nft-checkbox") {
+        sourceIds = allStakedBonusIds;
+        targetSet = selectedUnstakeNFTs;
+    }
+
+    if (Array.isArray(sourceIds) && sourceIds.length > 0) {
+        if (checked) {
+            for (const id of sourceIds) targetSet.add(String(id));
+        } else {
+            for (const id of sourceIds) targetSet.delete(String(id));
         }
-        if (checkboxClass === "staked-nft-checkbox") {
-            if (checked) selectedUnstakeNFTs.add(tokenId);
-            else selectedUnstakeNFTs.delete(tokenId);
-        }
-        if (checkboxClass === "bonus-nft-checkbox") {
-            if (checked) selectedStakeBonusNFTs.add(tokenId);
-            else selectedStakeBonusNFTs.delete(tokenId);
-        }
-        if (checkboxClass === "staked-bonus-nft-checkbox") {
-            if (checked) selectedUnstakeNFTs.add(tokenId);
-            else selectedUnstakeNFTs.delete(tokenId);
+    } else {
+        // Fallback: update only visible checkboxes (previous behavior)
+        for (const checkbox of checkboxes) {
+            const tokenId = checkbox.dataset.id;
+            if (checkboxClass === "nft-checkbox") {
+                if (checked) selectedStakeNFTs.add(tokenId); else selectedStakeNFTs.delete(tokenId);
+            }
+            if (checkboxClass === "staked-nft-checkbox") {
+                if (checked) selectedUnstakeNFTs.add(tokenId); else selectedUnstakeNFTs.delete(tokenId);
+            }
+            if (checkboxClass === "bonus-nft-checkbox") {
+                if (checked) selectedStakeBonusNFTs.add(tokenId); else selectedStakeBonusNFTs.delete(tokenId);
+            }
+            if (checkboxClass === "staked-bonus-nft-checkbox") {
+                if (checked) selectedUnstakeNFTs.add(tokenId); else selectedUnstakeNFTs.delete(tokenId);
+            }
         }
     }
 }
