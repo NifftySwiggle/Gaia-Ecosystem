@@ -1,5 +1,5 @@
 let selectedNetwork = null;
-let provider, signer, factoryContract, account;
+let provider, signer, factoryContract, factoryContractRead, account;
 
 const planet = document.querySelector('.planet');
 let lastScrollTop = 0;
@@ -207,11 +207,15 @@ async function switchNetwork(network) {
     }
 }
 
-function displayError(elementId, message) {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.innerText = message;
-        element.className = "status error";
+function displayError(elementId, error) {
+    const el = document.getElementById(elementId);
+    const { title, detail, level, opts } = formatErrorMessage(error);
+    if (el) {
+        if (level === 'error') showUserError(elementId, title, detail, opts);
+        else if (level === 'warning') showUserWarning(elementId, title, detail);
+        else showUserInfo(elementId, title, detail);
+    } else {
+        console.warn(`${title}: ${detail}`);
     }
 }
 
@@ -222,6 +226,38 @@ function displaySuccess(elementId, message) {
         element.className = "status success";
     }
 }
+
+// ======= NEW: User-friendly message helpers =======
+function showUserError(elementId, title, detail, opts = {}) {
+    // opts: { suggestReload: true, suggestReconnect: false, suggestWait: false }
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const suggestReload = opts.suggestReload !== false;
+    const suggestReconnect = !!opts.suggestReconnect;
+    const suggestWait = !!opts.suggestWait;
+    let html = `<div class="user-message user-error"><strong>${title}</strong><p>${detail}</p>`;
+    if (suggestWait) html += `<p>Please wait a moment — data may still be loading.</p>`;
+    if (suggestReload) html += `<p>If this continues, try reloading the page.</p>`;
+    if (suggestReconnect) html += `<p>Also try reconnecting your wallet or switching networks.</p>`;
+    html += `</div>`;
+    el.innerHTML = html;
+    el.className = "status error";
+}
+
+function showUserWarning(elementId, title, detail) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.innerHTML = `<div class="user-message user-warning"><strong>${title}</strong><p>${detail}</p></div>`;
+    el.className = "status warning";
+}
+
+function showUserInfo(elementId, title, detail) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.innerHTML = `<div class="user-message user-info"><strong>${title}</strong><p>${detail}</p></div>`;
+    el.className = "status";
+}
+// ======= end helpers =======
 
 async function connectWallet() {
     if (!window.ethereum) {
@@ -237,6 +273,8 @@ async function connectWallet() {
         const walletAddress = document.getElementById("walletAddress");
         if (walletAddress) walletAddress.innerText = `Wallet Address: ${account}`;
         factoryContract = new ethers.Contract(networkConfig[selectedNetwork].factoryAddress, factoryABI, signer);
+        // add a provider-backed contract for safe read-only calls
+        factoryContractRead = new ethers.Contract(networkConfig[selectedNetwork].factoryAddress, factoryABI, provider);
 
         const sections = ["deploySection", "stakeSection", "unstakeSection"];
         sections.forEach(id => {
@@ -445,62 +483,103 @@ async function loadPools() {
     try {
         // --- NEW: fetch and display factory openFee for everyone (formatted with USDC decimals) ---
         try {
-            const usdcDecimals = await getUsdcDecimals();
-            const openFee = await factoryContract.openFee();
-            const openFeeEl = document.getElementById("openFeeDisplay");
-            if (openFeeEl) {
-                openFeeEl.innerText = `Pool Open Fee: ${ethers.formatUnits(openFee, usdcDecimals)} USDC`;
+            const factoryAddr = networkConfig[selectedNetwork].factoryAddress;
+            const code = await provider.getCode(factoryAddr);
+            if (code === "0x") {
+                throw new Error(`Factory contract not found at ${factoryAddr} on selected network`);
             }
-        } catch (feeErr) {
-            console.warn("Could not read factory openFee:", feeErr);
-            // Keep existing/static text if reading fails
-        }
 
-        const pools = await factoryContract.getPools();
-        poolsDiv.innerHTML = pools.length === 0 ? "<p>No active pools available</p>" : "";
-        endedPoolsDiv.innerHTML = "";
-        select.innerHTML = '<option value="">Select a Pool</option>';
-        manageSelect.innerHTML = '<option value="">Select a Pool</option>';
-        const now = Math.floor(Date.now() / 1000);
-        let activeCount = 0;
-        let hasEndedPools = false;
-        for (const poolAddr of pools) {
+            // read-only: use provider-backed contract to avoid signer-from issues
             try {
-                const poolContract = new ethers.Contract(poolAddr, poolABI, provider);
-                const owner = await poolContract.owner();
-                const name = await poolContract.name();
-                const startTime = await poolContract.startTime();
-                const endTime = await poolContract.endTime();
-                const totalRewards = await poolContract.totalRewards();
-                const nftAddr = await poolContract.nft();
-                const rewardTokenName = await poolContract.rewardTokenName();
-
-                // --- NEW: detect reward token decimals and format correctly ---
-                let rewardsFormatted = "N/A";
-                try {
-                    const rewardTokenAddr = await poolContract.rewardToken();
-                    const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, provider);
-                    let rewardTokenDecimals = 18;
-                    try {
-                        rewardTokenDecimals = await rewardContract.decimals();
-                    } catch (decErr) {
-                        console.warn(`Could not fetch reward token decimals for pool ${poolAddr}: ${decErr.message}. Defaulting to 18.`);
-                    }
-                    rewardsFormatted = ethers.formatUnits(totalRewards, rewardTokenDecimals);
-                } catch (formatErr) {
-                    console.warn(`Could not format totalRewards for pool ${poolAddr}: ${formatErr.message}`);
-                    rewardsFormatted = ethers.formatUnits(totalRewards, 18);
+                const usdcDecimals = await getUsdcDecimals();
+                const openFee = await factoryContractRead.openFee();
+                const openFeeEl = document.getElementById("openFeeDisplay");
+                if (openFeeEl) {
+                    openFeeEl.innerText = `Pool Open Fee: ${ethers.formatUnits(openFee, usdcDecimals)} USDC`;
                 }
-                // --- END NEW ---
+            } catch (feeErr) {
+                console.warn("Could not read factory openFee (read):", feeErr);
+            }
 
-                const startDate = new Date(Number(startTime) * 1000).toLocaleString();
-                const endDate = new Date(Number(endTime) * 1000).toLocaleString();
-                const isEnded = Number(endTime) <= now;
-                const isOwner = owner.toLowerCase() === account.toLowerCase();
-                const targetDiv = isEnded ? endedPoolsDiv : poolsDiv;
-                if (!isEnded) {
-                    activeCount++;
-                    targetDiv.innerHTML += `
+            // get pools using read-only contract
+            const pools = await factoryContractRead.getPools();
+            poolsDiv.innerHTML = pools.length === 0 ? "<p>No active pools available</p>" : "";
+            endedPoolsDiv.innerHTML = "";
+            select.innerHTML = '<option value="">Select a Pool</option>';
+            manageSelect.innerHTML = '<option value="">Select a Pool</option>';
+            const now = Math.floor(Date.now() / 1000);
+            let activeCount = 0;
+            let hasEndedPools = false;
+
+            // small helper to chunk arrays to avoid RPC rate limits
+            const chunkArray = (arr, size) => {
+                const chunks = [];
+                for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+                return chunks;
+            };
+
+            // cache for decimals per reward token
+            const decimalsCache = {};
+
+            // process pools in batches
+            const poolChunks = chunkArray(pools, 10); // tune batch size (8-12 recommended)
+            for (const chunk of poolChunks) {
+                // parallelize calls inside this chunk
+                const infoPromises = chunk.map(async (poolAddr) => {
+                    try {
+                        const poolContract = new ethers.Contract(poolAddr, poolABI, provider);
+                        // fetch core fields in parallel
+                        const [owner, name, startTime, endTime, totalRewards, nftAddr, rewardTokenName, rewardTokenAddr] =
+                            await Promise.all([
+                                poolContract.owner(),
+                                poolContract.name(),
+                                poolContract.startTime(),
+                                poolContract.endTime(),
+                                poolContract.totalRewards(),
+                                poolContract.nft(),
+                                poolContract.rewardTokenName(),
+                                poolContract.rewardToken()
+                            ]);
+                        // decimals cached per token address
+                        let rewardDecimals = 18;
+                        if (rewardTokenAddr && rewardTokenAddr !== ethers.ZeroAddress) {
+                            if (decimalsCache[rewardTokenAddr] !== undefined) {
+                                rewardDecimals = decimalsCache[rewardTokenAddr];
+                            } else {
+                                try {
+                                    const rewardContract = new ethers.Contract(rewardTokenAddr, erc20ABI, provider);
+                                    rewardDecimals = await rewardContract.decimals();
+                                    decimalsCache[rewardTokenAddr] = rewardDecimals;
+                                } catch (decErr) {
+                                    decimalsCache[rewardTokenAddr] = 18;
+                                }
+                            }
+                        }
+                        const rewardsFormatted = ethers.formatUnits(totalRewards, rewardDecimals);
+                        return { poolAddr, owner, name, startTime: Number(startTime), endTime: Number(endTime), totalRewards, nftAddr, rewardTokenName, rewardsFormatted };
+                    } catch (e) {
+                        return { poolAddr, error: e.message || String(e) };
+                    }
+                });
+
+                const infos = await Promise.all(infoPromises);
+
+                // render results for this chunk
+                for (const info of infos) {
+                    if (info.error) {
+                        console.warn(`Error processing pool ${info.poolAddr}: ${info.error}`);
+                        continue;
+                    }
+                    try {
+                        const { poolAddr, owner, name, startTime, endTime, rewardsFormatted, rewardTokenName } = info;
+                        const startDate = new Date(startTime * 1000).toLocaleString();
+                        const endDate = new Date(endTime * 1000).toLocaleString();
+                        const isEnded = endTime <= now;
+                        const isOwner = owner.toLowerCase() === account.toLowerCase();
+                        const targetDiv = isEnded ? endedPoolsDiv : poolsDiv;
+                        if (!isEnded) {
+                            activeCount++;
+                            targetDiv.innerHTML += `
         <div class="pool-tile">
             <div class="text-content">
                 <p><strong>${name}</strong></p>
@@ -510,10 +589,10 @@ async function loadPools() {
                 <p>Rewards: ${rewardsFormatted}</p>
             </div>
         </div>`;
-                    select.innerHTML += `<option value="${poolAddr}">${name}</option>`;
-                } else if (isOwner) {
-                    hasEndedPools = true;
-                    targetDiv.innerHTML += `
+                            select.innerHTML += `<option value="${poolAddr}">${name}</option>`;
+                        } else if (isOwner) {
+                            hasEndedPools = true;
+                            targetDiv.innerHTML += `
         <div class="pool-tile">
             <div class="text-content">
                 <p><strong>${name}</strong></p>
@@ -524,26 +603,38 @@ async function loadPools() {
                 <p class="status-ended">Status: Ended</p>
             </div>
         </div>`;
+                        }
+                        if (isOwner) {
+                            manageSelect.innerHTML += `<option value="${poolAddr}">${name}${isEnded ? ' (Ended)' : ''}</option>`;
+                        }
+                    } catch (e) {
+                        console.warn(`Render error for pool ${info.poolAddr}: ${e.message}`);
+                    }
                 }
-                if (isOwner) {
-                    manageSelect.innerHTML += `<option value="${poolAddr}">${name}${isEnded ? ' (Ended)' : ''}</option>`;
-                }
-            } catch (e) {
-                console.warn(`Error processing pool ${poolAddr}: ${e.message}`);
+
+                // small delay between chunks to reduce chance of rate limiting
+                await new Promise(res => setTimeout(res, 150));
             }
+
+            if (poolsDiv.innerHTML === "") {
+                poolsDiv.innerHTML = "<p>No active pools available</p>";
+            }
+            if (endedPoolsDiv.innerHTML === "") {
+                endedPoolsDiv.innerHTML = "<p>No ended pools owned</p>";
+            }
+            const endedPoolsSection = document.getElementById("endedPoolsSection");
+            if (endedPoolsSection) endedPoolsSection.style.display = hasEndedPools ? "block" : "none";
+        } catch (error) {
+            console.error('Load pools error:', error);
+            showUserError("pools", "Unable to load pools", "We couldn't fetch pool information right now. Please check your network and try reloading the page.", { suggestReconnect: true, suggestReload: true });
+            showUserWarning("endedPools", "Pools unavailable", "Ended pools could not be loaded at this time.");
+        } finally {
+            poolsLoading = false;
         }
-        if (poolsDiv.innerHTML === "") {
-            poolsDiv.innerHTML = "<p>No active pools available</p>";
-        }
-        if (endedPoolsDiv.innerHTML === "") {
-            endedPoolsDiv.innerHTML = "<p>No ended pools owned</p>";
-        }
-        const endedPoolsSection = document.getElementById("endedPoolsSection");
-        if (endedPoolsSection) endedPoolsSection.style.display = hasEndedPools ? "block" : "none";
     } catch (error) {
         console.error('Load pools error:', error);
-        poolsDiv.innerHTML = `<p class="error">Error loading pools: ${error.message}</p>`;
-        endedPoolsDiv.innerHTML = `<p class="error">Error loading ended pools: ${error.message}</p>`;
+        showUserError("pools", "Unable to load pools", "We couldn't fetch pool information right now. Please check your network and try reloading the page.", { suggestReconnect: true, suggestReload: true });
+        showUserWarning("endedPools", "Pools unavailable", "Ended pools could not be loaded at this time.");
     } finally {
         poolsLoading = false;
     }
@@ -682,7 +773,8 @@ async function loadNFTs() {
         // Check pool contract exists
         const code = await provider.getCode(poolAddr);
         if (code === "0x") {
-            elements.nfts.innerHTML = `<p class="error">Pool contract at ${poolAddr} does not exist or is not deployed.</p>`;
+            console.warn(`No code at ${poolAddr}`);
+            showUserError("nfts", "Pool not found", "The selected pool contract was not found on the current network. Try switching networks or reloading the page.", { suggestReconnect: true, suggestReload: true });
             elements.stakeNFTs.disabled = true;
             return;
         }
@@ -724,7 +816,7 @@ async function loadNFTs() {
         }
         const nftCode = await provider.getCode(nftAddr);
         if (nftCode === "0x") {
-            elements.nfts.innerHTML = `<p class="error">NFT contract at ${nftAddr} does not exist or is not deployed.</p>`;
+            showUserError("nfts", "NFT contract not found", "We couldn't find the NFT contract for this pool on the network. This can happen if you're on the wrong network. Try switching networks or reloading.", { suggestReconnect: true, suggestReload: true });
             elements.stakeNFTs.disabled = true;
             return;
         }
@@ -735,7 +827,7 @@ async function loadNFTs() {
         try {
             isERC721 = await nftContract.supportsInterface("0x80ac58cd");
         } catch (e) {
-            elements.nfts.innerHTML = `<p class="error">NFT contract at ${nftAddr} does not support ERC-721: ${e.message}</p>`;
+            showUserError("nfts", "NFT check failed", "The NFT contract did not respond as expected. If NFTs are slow to load, please wait a moment and try again. If the issue persists, reload the page.", { suggestWait: true, suggestReload: true });
             elements.stakeNFTs.disabled = true;
             return;
         }
@@ -758,7 +850,7 @@ async function loadNFTs() {
         // NFT enumeration
         const nfts = [];
         if (balance == 0n) {
-            elements.nfts.innerHTML = `<p>No NFTs owned for contract ${nftAddr}</p>`;
+            showUserInfo("nfts", "No NFTs found", "You don't own any NFTs from this collection (checked your wallet address). If you think this is wrong, try reconnecting your wallet or switching networks.");
             elements.stakeNFTs.disabled = true;
         } else {
             // Immediately try enumeration for just the first token
@@ -778,7 +870,7 @@ async function loadNFTs() {
                     }
                 } catch (e) {
                     // If enumeration fails, skip further attempts and go straight to fallback
-                    elements.nftStatus.innerHTML += `<p class="warning">Enumeration failed. Using fallback scan.</p>`;
+                    showUserWarning("nftStatus", "Fast enumeration not available", "The contract doesn't support fast listing. We'll perform a fallback scan which may take longer. Please be patient or reload if it stalls.");
                     enumerableSupported = false;
                 }
             }
@@ -789,7 +881,7 @@ async function loadNFTs() {
                 try {
                     maxTokenId = await nftContract.totalSupply();
                 } catch (e) {
-                    elements.nftStatus.innerHTML += `<p class="warning">Warning: totalSupply not supported. Scanning up to token ID 19999.</p>`;
+                    showUserWarning("nftStatus", "Full supply unknown", "totalSupply() not available on this contract. We'll scan token IDs up to a default upper bound — this can take time. If you own high token IDs, scanning may be slow.");
                 }
                 const batchSize = 50;
                 const tokenIds = Array.from({ length: Number(maxTokenId) }, (_, i) => BigInt(i));
@@ -822,7 +914,8 @@ async function loadNFTs() {
         try {
             stakedTokens = await poolContract.getUserStakedTokens(account);
         } catch (e) {
-            elements.nfts.innerHTML = `<p class="error">Error loading staked NFTs: ${e.message}</p>`;
+            console.warn("getUserStakedTokens failed", e);
+            showUserError("nfts", "Couldn't load staked NFTs", "We couldn't retrieve staked NFT data for your account. Try reloading or reconnecting your wallet. If NFTs are still missing, wait a few moments for the fallback scan to finish.");
             elements.stakeNFTs.disabled = true;
             return;
         }
@@ -1258,7 +1351,7 @@ async function stakeNFTs() {
         await loadNFTs();
     } catch (error) {
         console.error('Stake NFTs error:', error);
-        displayError("stakeStatus", `Error staking NFTs: ${error.message}`);
+        displayError("stakeStatus", error);
     }
 }
 
@@ -1283,7 +1376,7 @@ async function unstakeNFTs() {
         await loadNFTs();
     } catch (error) {
         console.error('Unstake NFTs error:', error);
-        displayError("stakeStatus", `Error unstaking NFTs: ${error.message}`);
+        displayError("stakeStatus", error);
     }
 }
 
@@ -1312,7 +1405,7 @@ async function claimRewards() {
         await loadNFTs();
     } catch (error) {
         console.error('Claim rewards error:', error);
-        displayError("stakeStatus", `Error claiming rewards: ${error.message}`);
+        displayError("stakeStatus", error);
     }
 }
 
@@ -1471,7 +1564,7 @@ async function stakeBonusNFTs() {
         await loadNFTs();
     } catch (error) {
         console.error('Stake bonus NFTs error:', error);
-        displayError("stakeStatus", `Error staking bonus NFTs: ${error.message}`);
+        displayError("stakeStatus", error);
     }
 }
 
@@ -1499,7 +1592,7 @@ async function unstakeBonusNFTs() {
         await loadNFTs();
     } catch (error) {
         console.error('Unstake bonus NFTs error:', error);
-        displayError("stakeStatus", `Error unstaking bonus NFTs: ${error.message}`);
+        displayError("stakeStatus", error);
     }
 }
 
@@ -1522,7 +1615,7 @@ async function addRewards() {
             console.warn(`Could not read reward token decimals for ${rewardTokenAddr}: ${e.message}. Defaulting to 18.`);
         }
         const amount = ethers.parseUnits(amountInput.value, rewardDecimals);
-        // --- END NEW ---
+               // --- END NEW ---
 
         const allowance = await rewardContract.allowance(account, poolAddr);
         if (allowance < amount) {
@@ -2214,3 +2307,82 @@ async function debugTokenRewards(poolAddr, tokenId, accountAddr) {
         throw err;
     }
 }
+
+function formatErrorMessage(error) {
+    let raw = "";
+    let code = null;
+    if (!error) raw = "Unknown error";
+    else if (typeof error === "string") raw = error;
+    else if (error instanceof Error) raw = error.message || String(error);
+    else if (typeof error === "object") {
+        if (error.error && error.error.message) raw = error.error.message;
+        else if (error.reason) raw = error.reason;
+        else if (error.message) raw = error.message;
+        else raw = JSON.stringify(error);
+        if (error.code) code = String(error.code);
+    } else {
+        raw = String(error);
+    }
+    const low = raw.toLowerCase();
+
+    // Transaction rejected by user
+    if (low.includes("user denied") || low.includes("user rejected") || low.includes("ethers-user-denied") || low.includes("4001") || low.includes("action_rejected")) {
+        return {
+            title: "Transaction Rejected",
+            detail: "You rejected the transaction in your wallet. If this was a mistake, please try again and confirm the transaction in your wallet popup.",
+            level: "error",
+            opts: { suggestReload: false, suggestReconnect: false, suggestWait: false }
+        };
+    }
+    // Contract call failed
+    if (low.includes("missing revert data") || low.includes("call_exception") || low.includes("revert") || low.includes("execution reverted")) {
+        return {
+            title: "Contract Call Failed",
+            detail: "A contract call failed. This may be due to network congestion, contract issues, or invalid input. Try reloading the page, switching networks, or waiting a moment before retrying.",
+            level: "error",
+            opts: { suggestReload: true, suggestReconnect: true, suggestWait: true }
+        };
+    }
+    // Insufficient funds
+    if (low.includes("insufficient funds") || low.includes("insufficient balance") || low.includes("insufficient funds for gas")) {
+        return {
+            title: "Insufficient Balance",
+            detail: "Your wallet balance is too low to complete this action (including transaction fees). Please add funds and try again.",
+            level: "error",
+            opts: { suggestReload: false, suggestReconnect: false, suggestWait: false }
+        };
+    }
+    // RPC rate limiting
+    if (low.includes("rate limit") || low.includes("rate limited") || low.includes("429")) {
+        return {
+            title: "RPC Rate Limited",
+            detail: "The RPC node is rate-limiting requests. Please wait a minute and try again. For faster results, reduce simultaneous actions or switch to a different RPC.",
+            level: "warning",
+            opts: { suggestReload: false, suggestReconnect: true, suggestWait: true }
+        };
+    }
+    // NFT enumeration fallback
+    if (low.includes("totalSupply not supported") || low.includes("enumeration failed") || low.includes("fast enumeration not available")) {
+        return {
+            title: "NFT Listing Not Available",
+            detail: "This NFT contract doesn't support fast listing. The app will perform a fallback scan which can take longer. Please be patient. If NFTs are still missing after a while, reload the page.",
+            level: "warning",
+            opts: { suggestReload: true, suggestWait: true }
+        };
+    }
+    // Generic fallback
+    return {
+        title: "Error",
+        detail: raw,
+        level: "error",
+        opts: { suggestReload: true, suggestReconnect: true, suggestWait: false }
+    };
+}
+
+window.addEventListener('unhandledrejection', (ev) => {
+    const reason = ev.reason || "Unhandled promise rejection";
+    displayError("walletStatus", reason);
+});
+window.addEventListener('error', (ev) => {
+    displayError("walletStatus", ev.error || ev.message || ev);
+});
