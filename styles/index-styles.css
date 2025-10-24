@@ -162,6 +162,58 @@ nav a:hover {
   color: var(--green);
 }
 
+/* Footer styles */
+.footer {
+  width: 100%;
+  background: rgba(20, 20, 20, 0.95);
+  color: var(--text-light);
+  padding: 1.5rem 0 1rem 0;
+  text-align: center;
+  position: relative;
+  z-index: 20;
+  margin-top: 2rem;
+  font-size: 1rem;
+}
+
+.footer-content {
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.footer-icon {
+  height: 32px;
+  width: 32px;
+  vertical-align: middle;
+  transition: transform 0.2s;
+}
+
+.footer-icon:hover {
+  transform: scale(1.15);
+}
+
+.footer-cc {
+  font-size: 0.9rem;
+  opacity: 0.7;
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .footer-content, .footer-cc {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .footer-icon {
+    height: 28px;
+    width: 28px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .planet img { width: 200px; }
