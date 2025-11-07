@@ -527,6 +527,35 @@ footer strong {
     border-radius: 50%;
 }
 
+/* Loader overlay */
+.loader-overlay[hidden] { display: none !important; }
+.loader-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(2px);
+}
+.spinner {
+    width: 56px;
+    height: 56px;
+    border: 6px solid rgba(255,255,255,0.2);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin-bottom: 12px;
+}
+.loader-text {
+    color: var(--text-light);
+    font-weight: 600;
+    text-align: center;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* Responsive */
 @media (max-width: 400px) {
     .modal-content {
