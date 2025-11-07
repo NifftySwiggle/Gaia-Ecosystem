@@ -227,6 +227,36 @@ function displaySuccess(elementId, message) {
     }
 }
 
+// === Global loading helpers ===
+let _loaderCount = 0;
+function showGlobalLoader(message = "Loading...") {
+    const overlay = document.getElementById("globalLoader");
+    const text = document.getElementById("globalLoaderText");
+    if (!overlay) return;
+    if (text) text.innerText = message;
+    _loaderCount++;
+    overlay.hidden = false;
+}
+function hideGlobalLoader() {
+    const overlay = document.getElementById("globalLoader");
+    if (!overlay) return;
+    _loaderCount = Math.max(0, _loaderCount - 1);
+    if (_loaderCount === 0) overlay.hidden = true;
+}
+/**
+ * Run a task with the global loader visible.
+ * Usage: await runWithLoading("Loading pools...", () => loadPools());
+ */
+async function runWithLoading(message, fn) {
+    showGlobalLoader(message);
+    try {
+        return await fn();
+    } finally {
+        hideGlobalLoader();
+    }
+}
+// === end loading helpers ===
+
 // ======= NEW: User-friendly message helpers =======
 function showUserError(elementId, title, detail, opts = {}) {
     // opts: { suggestReload: true, suggestReconnect: false, suggestWait: false }
@@ -269,6 +299,14 @@ async function connectWallet() {
         await provider.send("eth_requestAccounts", []);
         signer = await provider.getSigner();
         account = await signer.getAddress();
+
+        // NEW: detect wallet chain and sync selectedNetwork + dropdown
+        try {
+            const net = await provider.getNetwork();
+            const netKey = chainIdToNetwork(net.chainId);
+            if (netKey) setSelectedNetworkUI(netKey);
+        } catch {}
+
         displaySuccess("walletStatus", `Connected: ${account}`);
         const walletAddress = document.getElementById("walletAddress");
         if (walletAddress) walletAddress.innerText = `Wallet Address: ${account}`;
@@ -877,7 +915,7 @@ async function loadNFTs() {
 
             if (!enumerableSupported) {
                 // Fallback: scan up to maxTokenId (default 20002, or use totalSupply if available)
-                let maxTokenId = 20002n;
+                let maxTokenId = 20003n;
                 try {
                     maxTokenId = await nftContract.totalSupply();
                 } catch (e) {
@@ -1966,152 +2004,162 @@ document.addEventListener("DOMContentLoaded", () => {
     createStars();
     const networkSelect = document.getElementById("networkSelect");
     if (networkSelect) {
-    selectedNetwork = networkSelect.value; // Set initial network
-    networkSelect.addEventListener("change", async (e) => {
-        selectedNetwork = e.target.value;
-        await switchNetwork(selectedNetwork);
-        await connectWallet();
-    });
-}
+        // Initialize from wallet chain if available
+        if (window.ethereum && window.ethereum.chainId) {
+            const netKey = chainIdToNetwork(window.ethereum.chainId);
+            if (netKey) setSelectedNetworkUI(netKey);
+            else selectedNetwork = networkSelect.value;
+        } else {
+            selectedNetwork = networkSelect.value;
+        }
 
-    function toggleSelectAll(buttonId, checkboxClass) {
-        const button = document.getElementById(buttonId);
-        if (!button) return;
-        let selected = false;
-        button.addEventListener("click", () => {
-            selected = !selected;
-            selectAllNFTs(checkboxClass, selected);
-            button.innerText = selected ? "Unselect All" : "Select All";
+        // CHANGE: only request wallet to switch; re-init happens via chainChanged
+        networkSelect.addEventListener("change", async (e) => {
+            const targetNet = e.target.value;
+            await runWithLoading(`Switching to ${targetNet}...`, () => switchNetwork(targetNet));
+            // chainChanged will follow and reconnect
         });
     }
 
-    const setPoolNameButton = document.getElementById("setPoolName");
-    if (setPoolNameButton) setPoolNameButton.addEventListener("click", setPoolName);
-
+    // Buttons -> wrap with loader where applicable
     const connectButton = document.getElementById("connectWallet");
-    if (connectButton) connectButton.addEventListener("click", connectWallet);
+    if (connectButton) connectButton.addEventListener("click", () => runWithLoading("Connecting wallet...", () => connectWallet()));
 
-    const copyButton = document.getElementById("copyWallet");
-    if (copyButton) copyButton.addEventListener("click", copyWallet);
+    const loadPoolsBtn = document.getElementById("loadPools");
+    if (loadPoolsBtn) loadPoolsBtn.addEventListener("click", () => runWithLoading("Loading pools...", () => loadPools()));
+
+    const loadMyPoolsBtn = document.getElementById("loadMyPools");
+    if (loadMyPoolsBtn) loadMyPoolsBtn.addEventListener("click", () => runWithLoading("Loading your pools...", () => loadMyPools()));
 
     const deployButton = document.getElementById("deployPool");
-    if (deployButton) deployButton.addEventListener("click", deployPool);
+    if (deployButton) deployButton.addEventListener("click", () => runWithLoading("Deploying pool...", () => deployPool()));
 
     const approveButton = document.getElementById("approveNFTs");
-    if (approveButton) approveButton.addEventListener("click", approveNFTs);
+    if (approveButton) approveButton.addEventListener("click", () => runWithLoading("Approving NFTs...", () => approveNFTs()));
 
     const approveBonusButton = document.getElementById("approveBonusNFTs");
-    if (approveBonusButton) approveBonusButton.addEventListener("click", approveBonusNFTs);
-
-    const stakeButton = document.getElementById("stakeNFTs");
-    if (stakeButton) stakeButton.addEventListener("click", stakeNFTs);
-
-    const stakeBonusButton = document.getElementById("stakeBonusNFTs");
-    if (stakeBonusButton) stakeBonusButton.addEventListener("click", stakeBonusNFTs);
-
-    const unstakeButton = document.getElementById("unstakeNFTs");
-    if (unstakeButton) unstakeButton.addEventListener("click", unstakeNFTs);
-
-    const unstakeBonusButton = document.getElementById("unstakeBonusNFTs");
-    if (unstakeBonusButton) unstakeBonusButton.addEventListener("click", unstakeBonusNFTs);
-
-    const claimButton = document.getElementById("claimRewards");
-    if (claimButton) claimButton.addEventListener("click", claimRewards);
-
-    const claimAllButton = document.getElementById("claimAllRewards");
-    if (claimAllButton) claimAllButton.addEventListener("click", claimAllRewards);
-
-    const setEndTimeButton = document.getElementById("setEndTime");
-    if (setEndTimeButton) setEndTimeButton.addEventListener("click", setEndTime);
-
-    const setRewardTokenNameButton = document.getElementById("setRewardTokenName");
-    if (setRewardTokenNameButton) setRewardTokenNameButton.addEventListener("click", setRewardTokenName);
-
-    const setBonusNFTButton = document.getElementById("setBonusNFT");
-    if (setBonusNFTButton) setBonusNFTButton.addEventListener("click", setBonusNFT);
-
-    const setPoolImageButton = document.getElementById("setPoolImage");
-    if (setPoolImageButton) setPoolImageButton.addEventListener("click", setPoolImage);
-
-    const addRewardsButton = document.getElementById("addRewards");
-    if (addRewardsButton) addRewardsButton.addEventListener("click", addRewards);
-
-    const withdrawExcessButton = document.getElementById("withdrawExcessRewards");
-    if (withdrawExcessButton) withdrawExcessButton.addEventListener("click", withdrawExcessRewards);
-
-    const endPoolButton = document.getElementById("endPool");
-    if (endPoolButton) endPoolButton.addEventListener("click", endPool);
-
-    const withdrawRemainingButton = document.getElementById("withdrawRemaining");
-    if (withdrawRemainingButton) withdrawRemainingButton.addEventListener("click", withdrawRemaining);
-
-    const withdrawNativeButton = document.getElementById("withdrawNative");
-    if (withdrawNativeButton) withdrawNativeButton.addEventListener("click", withdrawNativeAdmin);
-
-    const withdrawUsdcButton = document.getElementById("withdrawUsdc");
-    if (withdrawUsdcButton) withdrawUsdcButton.addEventListener("click", withdrawUsdcAdmin);
-
-    const setOpenFeeButton = document.getElementById("setOpenFee");
-    if (setOpenFeeButton) setOpenFeeButton.addEventListener("click", setOpenFee);
-
-    const setTxFeeButton = document.getElementById("setTxFee");
-    if (setTxFeeButton) setTxFeeButton.addEventListener("click", setTxFee);
-
-    const setExemptButton = document.getElementById("setExempt");
-    if (setExemptButton) setExemptButton.addEventListener("click", setExempt);
+    if (approveBonusButton) approveBonusButton.addEventListener("click", () => runWithLoading("Approving bonus NFTs...", () => approveBonusNFTs()));
 
     const selectAllStake = document.getElementById("selectAllStake");
-    if (selectAllStake) selectAllStake.addEventListener("click", (e) => selectAllNFTs("nft-checkbox", true));
+    if (selectAllStake) selectAllStake.addEventListener("click", () => selectAllNFTs("nft-checkbox", true));
 
     const selectAllUnstake = document.getElementById("selectAllUnstake");
-    if (selectAllUnstake) selectAllUnstake.addEventListener("click", (e) => selectAllNFTs("staked-nft-checkbox", true));
+    if (selectAllUnstake) selectAllUnstake.addEventListener("click", () => selectAllNFTs("staked-nft-checkbox", true));  // Changed false to true
 
     const selectAllBonusStake = document.getElementById("selectAllBonusStake");
-    if (selectAllBonusStake) selectAllBonusStake.addEventListener("change", (e) => selectAllNFTs("bonus-nft-checkbox", true));
+    if (selectAllBonusStake) selectAllBonusStake.addEventListener("click", () => selectAllNFTs("bonus-nft-checkbox", true));
 
     const selectAllBonusUnstake = document.getElementById("selectAllBonusUnstake");
-    if (selectAllBonusUnstake) selectAllBonusUnstake.addEventListener("change", (e) => selectAllNFTs("staked-bonus-nft-checkbox", true));
+    if (selectAllBonusUnstake) selectAllBonusUnstake.addEventListener("click", () => selectAllNFTs("staked-bonus-nft-checkbox", true));  // Changed false to true
+
+    const stakeButton = document.getElementById("stakeNFTs");
+    if (stakeButton) stakeButton.addEventListener("click", () => runWithLoading("Staking NFTs...", () => stakeNFTs()));
+
+    const stakeBonusButton = document.getElementById("stakeBonusNFTs");
+    if (stakeBonusButton) stakeBonusButton.addEventListener("click", () => runWithLoading("Staking bonus NFTs...", () => stakeBonusNFTs()));
+
+    const unstakeButton = document.getElementById("unstakeNFTs");
+    if (unstakeButton) unstakeButton.addEventListener("click", () => runWithLoading("Unstaking NFTs...", () => unstakeNFTs()));
+
+    const unstakeBonusButton = document.getElementById("unstakeBonusNFTs");
+    if (unstakeBonusButton) unstakeBonusButton.addEventListener("click", () => runWithLoading("Unstaking bonus NFTs...", () => unstakeBonusNFTs()));
+
+    const claimButton = document.getElementById("claimRewards");
+    if (claimButton) claimButton.addEventListener("click", () => runWithLoading("Claiming rewards...", () => claimRewards()));
+
+    const claimAllButton = document.getElementById("claimAllRewards");
+    if (claimAllButton) claimAllButton.addEventListener("click", () => runWithLoading("Claiming all rewards...", () => claimAllRewards()));
+
+    const addRewardsButton = document.getElementById("addRewards");
+    if (addRewardsButton) addRewardsButton.addEventListener("click", () => runWithLoading("Adding rewards...", () => addRewards()));
+
+    const withdrawExcessButton = document.getElementById("withdrawExcessRewards");
+    if (withdrawExcessButton) withdrawExcessButton.addEventListener("click", () => runWithLoading("Withdrawing rewards...", () => withdrawExcessRewards()));
+
+    const endPoolButton = document.getElementById("endPool");
+    if (endPoolButton) endPoolButton.addEventListener("click", () => runWithLoading("Ending pool...", () => endPool()));
+
+    const withdrawRemainingButton = document.getElementById("withdrawRemaining");
+    if (withdrawRemainingButton) withdrawRemainingButton.addEventListener("click", () => runWithLoading("Withdrawing remaining...", () => withdrawRemaining()));
+
+    const setEndTimeButton = document.getElementById("setEndTime");
+    if (setEndTimeButton) setEndTimeButton.addEventListener("click", () => runWithLoading("Updating end time...", () => setEndTime()));
+
+    const setRewardTokenNameButton = document.getElementById("setRewardTokenName");
+    if (setRewardTokenNameButton) setRewardTokenNameButton.addEventListener("click", () => runWithLoading("Updating reward name...", () => setRewardTokenName()));
+
+    const setBonusNFTButton = document.getElementById("setBonusNFT");
+    if (setBonusNFTButton) setBonusNFTButton.addEventListener("click", () => runWithLoading("Setting bonus NFT...", () => setBonusNFT()));
+
+    const setPoolImageButton = document.getElementById("setPoolImage");
+    if (setPoolImageButton) setPoolImageButton.addEventListener("click", () => runWithLoading("Updating pool image...", () => setPoolImage()));
+
+    const setPoolNameButton = document.getElementById("setPoolName");
+    if (setPoolNameButton) setPoolNameButton.addEventListener("click", () => runWithLoading("Updating pool name...", () => setPoolName()));
+
+    const withdrawNativeButton = document.getElementById("withdrawNative");
+    if (withdrawNativeButton) withdrawNativeButton.addEventListener("click", () => runWithLoading("Withdrawing native...", () => withdrawNativeAdmin()));
+
+    const withdrawUsdcButton = document.getElementById("withdrawUsdc");
+    if (withdrawUsdcButton) withdrawUsdcButton.addEventListener("click", () => runWithLoading("Withdrawing USDC...", () => withdrawUsdcAdmin()));
+
+    const setOpenFeeButton = document.getElementById("setOpenFee");
+    if (setOpenFeeButton) setOpenFeeButton.addEventListener("click", () => runWithLoading("Setting open fee...", () => setOpenFee()));
+
+    const setTxFeeButton = document.getElementById("setTxFee");
+    if (setTxFeeButton) setTxFeeButton.addEventListener("click", () => runWithLoading("Setting tx fee...", () => setTxFee()));
+
+    const setExemptButton = document.getElementById("setExempt");
+    if (setExemptButton) setExemptButton.addEventListener("click", () => runWithLoading("Updating exemption...", () => setExempt()));
 
     const selectedPool = document.getElementById("selectedPool");
-    if (selectedPool) selectedPool.addEventListener("change", loadNFTs);
+    if (selectedPool) selectedPool.addEventListener("change", () => runWithLoading("Loading NFTs...", () => loadNFTs()));
 
-    const managePool = document.getElementById("managePool");
-    if (managePool) managePool.addEventListener("change", () => {
-        const manageStatus = document.getElementById("manageStatus");
-        if (manageStatus) manageStatus.innerText = "";
-    });
-    
-    const howToUseButton = document.getElementById("howToUse");
-    if (howToUseButton) {
-    howToUseButton.addEventListener("click", () => {
-        document.getElementById("howToUseModal").style.display = "flex";
-    });
-    }
+    // ===== NEW: Add event listeners for toggle buttons =====
+    document.getElementById("toggleAvailablePools")?.addEventListener("click", () => toggleSection("poolsContent", "toggleAvailablePools"));
+    document.getElementById("toggleStakeSection")?.addEventListener("click", () => toggleSection("stakeContent", "toggleStakeSection"));
+    document.getElementById("toggleUnstakeSection")?.addEventListener("click", () => toggleSection("unstakeContent", "toggleUnstakeSection"));
+    document.getElementById("toggleDeploySection")?.addEventListener("click", () => toggleSection("deployContent", "toggleDeploySection"));
+    document.getElementById("toggleMyPools")?.addEventListener("click", () => toggleSection("myPoolsContent", "toggleMyPools"));
+    document.getElementById("toggleManageSection")?.addEventListener("click", () => toggleSection("manageContent", "toggleManageSection"));
+    document.getElementById("toggleAdminSection")?.addEventListener("click", () => toggleSection("adminContent", "toggleAdminSection"));
+    document.getElementById("toggleEndedPools")?.addEventListener("click", () => toggleSection("endedPoolsContent", "toggleEndedPools"));
+    // ===== END NEW =====
 
-    const toggleButtons = [
-        { id: "toggleDeploySection", section: "deployContent" },
-        { id: "toggleStakeSection", section: "stakeContent" },
-        { id: "toggleUnstakeSection", section: "unstakeContent" },
-        { id: "toggleManageSection", section: "manageContent" },
-        { id: "toggleAdminSection", section: "adminContent" },
-        { id: "toggleEndedPools", section: "endedPoolsContent" },
-        { id: "toggleAvailablePools", section: "poolsContent" },
-        { id: "toggleMyPools", section: "myPoolsContent" }
-    ];
-    toggleButtons.forEach(({ id, section }) => {
-        const button = document.getElementById(id);
-        if (button) button.addEventListener("click", () => toggleSection(section, id));
+    // Modal close handlers (for howToUseModal)
+    document.getElementById("howToUseClose")?.addEventListener("click", () => closeModal("howToUseModal"));
+    document.getElementById("howToUseModal")?.addEventListener("click", (e) => {
+        if (e.target === e.currentTarget || e.target.hasAttribute('data-close-modal')) closeModal("howToUseModal");
     });
-
-    toggleSelectAll("selectAllStake", "nft-checkbox");
-    toggleSelectAll("selectAllUnstake", "staked-nft-checkbox");
-    toggleSelectAll("selectAllBonusStake", "bonus-nft-checkbox");
-    toggleSelectAll("selectAllBonusUnstake", "staked-bonus-nft-checkbox");
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !document.getElementById("howToUseModal")?.hidden) closeModal("howToUseModal");
+    });
 
     // Handle MetaMask network/account changes
     if (window.ethereum) {
-        window.ethereum.on('chainChanged', () => {
-            window.location.reload();
+        window.ethereum.on('chainChanged', async (chainId) => {
+            const netKey = chainIdToNetwork(chainId);
+            if (!netKey) {
+                displayError("walletStatus", "Unsupported network selected in wallet. Please switch to Cronos or Polygon.");
+                signer = null; account = null;
+                return;
+            }
+            setSelectedNetworkUI(netKey);
+            signer = null; account = null;
+            const name = netKey === 'polygon' ? 'Polygon' : 'Cronos';
+            promptReconnect(name);
+            try {
+                provider = new ethers.BrowserProvider(window.ethereum);
+                factoryContractRead = new ethers.Contract(networkConfig[selectedNetwork].factoryAddress, factoryABI, provider);
+            } catch (e) {
+                displayError("walletStatus", e);
+                return;
+            }
+            try {
+                await runWithLoading(`Reconnecting on ${name}...`, () => connectWallet());
+            } catch (e) {
+                displayError("walletStatus", e);
+            }
         });
         window.ethereum.on('accountsChanged', (accounts) => {
             if (accounts.length > 0) {
@@ -2119,7 +2167,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 displaySuccess("walletStatus", `Connected: ${account}`);
                 const walletAddress = document.getElementById("walletAddress");
                 if (walletAddress) walletAddress.innerText = `Wallet Address: ${account}`;
-                connectWallet();
+                (async () => {
+                    try {
+                        if (provider) {
+                            signer = await provider.getSigner();
+                        }
+                        await runWithLoading("Refreshing pools...", () => loadPools());
+                        await runWithLoading("Refreshing my pools...", () => loadMyPools());
+                    } catch (e) {
+                        console.warn("accountsChanged refresh failed:", e);
+                    }
+                })();
             } else {
                 displayError("walletStatus", "Wallet disconnected");
                 account = null;
@@ -2131,7 +2189,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-    });
+});
 
 async function fetchIpfsJson(ipfsUri) {
     if (!ipfsUri.startsWith("ipfs://")) return null;
@@ -2386,3 +2444,84 @@ window.addEventListener('unhandledrejection', (ev) => {
 window.addEventListener('error', (ev) => {
     displayError("walletStatus", ev.error || ev.message || ev);
 });
+
+// ===== NEW: chainId <-> network helpers and re-init =====
+function normalizeChainIdHex(chainId) {
+    if (typeof chainId === 'bigint') return '0x' + chainId.toString(16);
+    if (typeof chainId === 'number') return '0x' + chainId.toString(16);
+    if (typeof chainId === 'string') return chainId.toLowerCase();
+    return '';
+}
+
+function chainIdToNetwork(chainId) {
+    const hex = normalizeChainIdHex(chainId);
+    if (hex === networkConfig.cronos.chainId) return 'cronos';
+    if (hex === networkConfig.polygon.chainId) return 'polygon';
+    // numeric fallbacks
+    if (hex === '0x19') return 'cronos';   // 25
+    if (hex === '0x89') return 'polygon';  // 137
+    return null;
+}
+
+function setSelectedNetworkUI(netKey) {
+    selectedNetwork = netKey;
+    const sel = document.getElementById('networkSelect');
+    if (sel && sel.value !== netKey) sel.value = netKey;
+    const name = netKey === 'polygon' ? 'Polygon' : 'Cronos';
+    displaySuccess('walletStatus', `Switched to ${name}`);
+}
+
+// Optional: small helper to prompt reconnection in the status area
+function promptReconnect(name) {
+    const el = document.getElementById('walletStatus');
+    if (!el) return;
+    el.className = 'status warning';
+    el.innerHTML = `
+        <div class="user-message user-warning">
+            <strong>Network changed to ${name}.</strong>
+            <p>Please reconnect your wallet on this network to continue.</p>
+        </div>`;
+}
+
+// --- NEW: reinitForNetwork with improved flow ---
+async function reinitForNetwork(netKey) {
+    try {
+        if (!window.ethereum) return;
+        setSelectedNetworkUI(netKey);
+
+        // Rebuild provider/signer and contracts for the new network
+        provider = new ethers.BrowserProvider(window.ethereum);
+        // signer may fail if not connected yet; keep optional
+        try { signer = await provider.getSigner(); account = await signer.getAddress(); } catch (_) {}
+
+        factoryContract = signer
+            ? new ethers.Contract(networkConfig[selectedNetwork].factoryAddress, factoryABI, signer)
+            : null;
+        factoryContractRead = new ethers.Contract(networkConfig[selectedNetwork].factoryAddress, factoryABI, provider);
+
+        // Refresh UI data
+        await loadPools().catch(e => console.warn('loadPools on reinit:', e));
+        if (account) {
+            await loadMyPools().catch(e => console.warn('loadMyPools on reinit:', e));
+            // Show admin section if caller is factory owner
+            try {
+                const owner = await factoryContractRead.owner();
+                const adminSection = document.getElementById("adminSection");
+                if (owner && account && owner.toLowerCase() === account.toLowerCase()) {
+                    if (adminSection) adminSection.style.display = "block";
+                    await loadAdminData();
+                } else {
+                    if (adminSection) adminSection.style.display = "none";
+                }
+            } catch {}
+        }
+
+        // If a pool is currently selected, refresh its NFTs view
+        const selPool = document.getElementById('selectedPool');
+        if (selPool && selPool.value) {
+            await loadNFTs().catch(e => console.warn('loadNFTs on reinit:', e));
+        }
+    } catch (e) {
+        displayError('walletStatus', e);
+    }
+}
