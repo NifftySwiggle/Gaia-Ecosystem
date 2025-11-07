@@ -38,7 +38,7 @@
                     <option value="polygon">Polygon</option>
                 </select>
                 <button id="connectWallet" class="button">Connect Wallet</button>
-                <button id="howToUse" class="button">How to Use</button>
+                <button id="howToUse" class="button" onclick="document.getElementById('howToUseModal').style.display='flex'; document.body.style.overflow='hidden';">How to Use</button>            
             </div>
             <span id="walletStatus"></span>
             <!--<div id="walletAddress" class="wallet-address"></div>-->
@@ -204,6 +204,13 @@
         <p>Created by <strong>NifftySwiggle © 2025</strong> 🚀</p>
         <!--<button class="button" onclick="document.getElementById('donationModal').style.display='flex'">Donate</button>-->
     </footer>
+
+    <!-- Global loader overlay -->
+    <div id="globalLoader" class="loader-overlay" aria-live="polite" hidden>
+        <div class="spinner"></div>
+        <div class="loader-text" id="globalLoaderText">Loading...</div>
+    </div>
+
     <div id="donationModal" class="modal">
         <div class="modal-content">
             <span class="modal-close" onclick="document.getElementById('donationModal').style.display='none'">✖</span>
@@ -217,7 +224,7 @@
     </div>
     <div id="howToUseModal" class="modal">
         <div class="modal-content">
-            <span class="modal-close" onclick="document.getElementById('howToUseModal').style.display='none'">✖</span>
+            <span class="modal-close" onclick="document.getElementById('howToUseModal').style.display='none'; document.body.style.overflow='auto';">✖</span>
             <h2>How to Use the Non-Custodial NFT Staking Platform</h2>
             <p>This platform is <strong>non-custodial</strong>, meaning your NFTs remain in your wallet during staking. This is achieved by using smart contract approvals, where you grant the staking contract permission to manage your NFTs without transferring ownership.</p>
             <p>Follow these steps to use the platform effectively:</p>
