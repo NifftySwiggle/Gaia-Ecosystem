@@ -1,5 +1,34 @@
 let selectedNetwork = null;
-let provider, signer, factoryContract, factoryContractRead, account;
+
+// Hamburger toggle (add once, merge if you already have DOMContentLoaded logic)
+document.addEventListener('DOMContentLoaded', () => {
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const navDropdown = document.getElementById('navDropdown');
+
+    if (hamburgerBtn && navDropdown) {
+        hamburgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            navDropdown.classList.toggle('show');
+            navDropdown.setAttribute('aria-hidden', String(!navDropdown.classList.contains('show')));
+        });
+
+        // Close when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!hamburgerBtn.contains(e.target) && !navDropdown.contains(e.target)) {
+                navDropdown.classList.remove('show');
+                navDropdown.setAttribute('aria-hidden', 'true');
+            }
+        });
+
+        // Close on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                navDropdown.classList.remove('show');
+                navDropdown.setAttribute('aria-hidden', 'true');
+            }
+        });
+    }
+});
 
 const planet = document.querySelector('.planet');
 let lastScrollTop = 0;
@@ -24,6 +53,12 @@ const networkConfig = {
         factoryAddress: "0x6f147D79bD0886eCcaF79fCBC920d16e65035A3b",
         rpcUrl: "https://polygon-rpc.com",
         usdcAddress: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+    },
+    monad: {
+        chainId: '0x8f',
+        factoryAddress: "0x12fF9437f3D616d9f82168b57Eb4190466FC77dD",
+        rpcUrl: "https://rpc.monad.xyz",
+        usdcAddress: "0x754704Bc059F8C67012fEd69BC8A327a5aafb603"
     }
 };
 
@@ -190,11 +225,11 @@ async function switchNetwork(network) {
                             chainName: network.charAt(0).toUpperCase() + network.slice(1),
                             rpcUrls: [networkConfig[network].rpcUrl],
                             nativeCurrency: {
-                                name: network === 'cronos' ? 'Cronos' : 'MATIC',
-                                symbol: network === 'cronos' ? 'CRO' : 'MATIC',
+                                name: network === 'cronos' ? 'Cronos' : network === 'monad' ? 'Monad' : 'MATIC',
+                                symbol: network === 'cronos' ? 'CRO' : network === 'monad' ? 'MON' : 'MATIC',
                                 decimals: 18,
                             },
-                            blockExplorerUrls: [network === 'cronos' ? 'https://cronosscan.com' : 'https://polygonscan.com'],
+                            blockExplorerUrls: [network === 'cronos' ? 'https://cronosscan.com' : network === 'monad' ? 'https://monadvision.com' : 'https://polygonscan.com'],
                         },
                     ],
                 });
@@ -1517,7 +1552,7 @@ async function claimAllRewards(event) {
             return;
         }
 
-        if (typeof poolContract.claimAll === "function") {
+        if ( typeof poolContract.claimAll === "function") {
             const gasEstimate = await poolContract.claimAll.estimateGas({ value: txFee });
             const tx = await poolContract.claimAll({ value: txFee, gasLimit: gasEstimate * 12n / 10n });
             claimStatus && (claimStatus.innerText = "Claiming rewards...");
@@ -2457,9 +2492,11 @@ function chainIdToNetwork(chainId) {
     const hex = normalizeChainIdHex(chainId);
     if (hex === networkConfig.cronos.chainId) return 'cronos';
     if (hex === networkConfig.polygon.chainId) return 'polygon';
+    if (hex === networkConfig.monad.chainId) return 'monad';
     // numeric fallbacks
     if (hex === '0x19') return 'cronos';   // 25
     if (hex === '0x89') return 'polygon';  // 137
+    if (hex === '0x8f') return 'monad';    // 143
     return null;
 }
 
@@ -2467,7 +2504,7 @@ function setSelectedNetworkUI(netKey) {
     selectedNetwork = netKey;
     const sel = document.getElementById('networkSelect');
     if (sel && sel.value !== netKey) sel.value = netKey;
-    const name = netKey === 'polygon' ? 'Polygon' : 'Cronos';
+    const name = netKey === 'polygon' ? 'Polygon' : netKey === 'monad' ? 'Monad' : 'Cronos';
     displaySuccess('walletStatus', `Switched to ${name}`);
 }
 
