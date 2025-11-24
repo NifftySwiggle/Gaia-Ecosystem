@@ -12,17 +12,59 @@
     <body>
     <header>
         <div class="logo">
-            <a href="./index.html" onclick="return confirm ('Leave this page? Unsaved changes may be lost.')">
-            <img src="https://raw.githubusercontent.com/NifftySwiggle/Gaia-Ecosystem/main/assets/gaia-logo.png" alt="Logo">
+            <a href="./index.html" onclick="return confirm('Leave this page? Unsaved changes may be lost.')" aria-label="Home">
+                <img src="https://raw.githubusercontent.com/NifftySwiggle/Gaia-Ecosystem/main/assets/gaia-logo.png" alt="Logo">
+            </a>
         </div>
-        <nav>
-            <a href="./index.html" onclick="return confirm ('Leave this page? Unsaved changes may be lost.')">Home</a>
+
+        <!-- Hamburger always visible -->
+        <button id="hamburgerBtn" class="hamburger-btn" aria-label="Open Navigation Menu">☰</button>
+
+        <!-- Primary nav (kept for semantics but hidden by CSS) -->
+        <nav id="navMenu" class="primary-nav">
+            <a href="./index.html">Home</a>
             <a href="#availablePoolsSection">Pools</a>
             <a href="#stakeSection">Stake</a>
             <a href="#unstakeSection">Unstake</a>
             <a href="#deploySection">Deploy</a>
-            <!-- Add more links as needed, e.g., <a href="index.html">Home</a> -->
         </nav>
+
+        <!-- Navigation Dropdown content -->
+        <div class="nav-dropdown" id="navDropdown" aria-hidden="true" role="menu">
+            <div class="nav-section">
+                <div class="nav-section-header">Strategic Play</div>
+                <div class="nav-section-items">
+                    <a href="https://www.strategicplay.xyz#origins" class="nav-item">Origins</a>
+                    <a href="https://www.strategicplay.xyz#passes" class="nav-item">Passes</a>
+                    <a href="https://www.strategicplay.xyz/#mint" class="nav-item">Mint</a>
+                    <a href="https://www.strategicplay.xyz" class="nav-item">Roadmap (soon)</a>
+                    <a href="https://www.strategicplay.xyz" class="nav-item">Vision (soon)</a>
+                </div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-header">GameHub</div>
+                <div class="nav-section-items">
+                    <a href="https://www.strategicplay.xyz/chess.html" class="nav-item" target="_blank">Chess</a>
+                </div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-header">Web3 Tools</div>
+                <div class="nav-section-items">
+                    <a href="https://www.nifftyswiggle.pw/swigglescan" class="nav-item" target="_blank">SwiggleScan</a>
+                    <a href="https://www.gaiaecosystem.com/stake.html" class="nav-item" target="_blank">Noncustodial Stake</a>
+                    <a href="https://www.nifftyswiggle.pw/airdrop" class="nav-item" target="_blank">Token Airdrop</a>
+                    <a href="https://www.nifftyswiggle.pw/updatemetadata" class="nav-item" target="_blank">Metadata Generator</a>
+                    <a href="https://www.nifftyswiggle.pw/nftgenerator" class="nav-item" target="_blank">NFT Generator</a>
+                </div>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-header">Discover More</div>
+                <div class="nav-section-items">
+                    <a href="https://www.nifftyswiggle.pw/pixeldraw" class="nav-item" target="_blank">Pixel Art</a>
+                    <a href="https://www.nifftyswiggle.pw/mpc" class="nav-item" target="_blank">MPC</a>
+                </div>
+            </div>
+        </div>
     </header>
     <div class="stars" id="stars"></div>
     <div class="planet">
@@ -36,6 +78,7 @@
                 <select id="networkSelect" style="margin-right: 10px;">
                     <option value="cronos">Cronos</option>
                     <option value="polygon">Polygon</option>
+                    <option value="monad">Monad</option>
                 </select>
                 <button id="connectWallet" class="button">Connect Wallet</button>
                 <button id="howToUse" class="button" onclick="document.getElementById('howToUseModal').style.display='flex'; document.body.style.overflow='hidden';">How to Use</button>            
