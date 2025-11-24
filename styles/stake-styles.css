@@ -580,3 +580,45 @@ footer strong {
         margin: 0.5rem 0; 
     }
 }
+
+/* Force hamburger navigation on ALL devices */
+.hamburger-btn {
+    display: inline-flex !important;
+    background: none;
+    border: none;
+    color: var(--text-light);
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 6px 8px;
+    align-items: center;
+    gap: 6px;
+}
+.hamburger-btn:hover { color: var(--green); }
+
+/* Hide the primary nav so hamburger is the single control */
+.primary-nav {
+    display: none !important;
+}
+
+/* Dropdown anchored to header, limited width on desktop */
+.nav-dropdown {
+    display: none;
+    position: absolute;
+    top: 64px;
+    right: 12px;
+    width: min(420px, 96%);
+    background: rgba(15,15,20,0.98);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px;
+    z-index: 1200;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.nav-dropdown.show { display: block; }
+
+/* nav items */
+.nav-section-header { color: var(--green); font-weight: 700; margin-bottom: 6px; }
+.nav-item { color: var(--text-light); text-decoration: none; padding: 8px; border-radius: 6px; display:block; }
+.nav-item:hover { background: rgba(255,255,255,0.03); }
